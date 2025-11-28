@@ -8,6 +8,7 @@ import time
 import aiofiles
 import httpx
 import yaml
+from pathlib import Path
 from fastapi import APIRouter, Request, Query, HTTPException  # 导入FastAPI组件
 from starlette.responses import FileResponse
 
@@ -31,11 +32,45 @@ def _norm_path(p: str) -> str:
 
 def _is_under(root: str, p: str) -> bool:
     try:
-        root_n = _norm_path(root)
-        p_n = _norm_path(p)
-        return os.path.commonpath([root_n, p_n]) == root_n
+        root_n = Path(_norm_path(root)).resolve(strict=False)
+        p_n = Path(_norm_path(p)).resolve(strict=False)
+        try:
+            p_n.relative_to(root_n)
+            return True
+        except Exception:
+            return False
     except Exception:
         return False
+
+def _is_under_any(p: str, roots: list[str]) -> bool:
+    try:
+        rp = Path(_norm_path(p)).resolve(strict=False)
+        for r in roots:
+            rr = Path(_norm_path(r)).resolve(strict=False)
+            try:
+                rp.relative_to(rr)
+                return True
+            except Exception:
+                continue
+        return False
+    except Exception:
+        return False
+
+def _safe_unlink(p: str, roots: list[str]):
+    try:
+        if _is_under_any(p, roots) and Path(p).is_file():
+            os.unlink(p)
+    except Exception:
+        pass
+
+def _valid_filename(name: str) -> bool:
+    if not name:
+        return False
+    if '/' in name or '\\' in name:
+        return False
+    if name in {'.', '..'}:
+        return False
+    return True
 
 async def fetch_data(url: str, headers: dict = None):
     headers = {
@@ -61,19 +96,17 @@ async def fetch_data_stream(url: str, request:Request , headers: dict = None, fi
 
             # 流式保存文件
             root_path = _norm_path(config.get("API").get("Download_Path"))
+            temp_root = _norm_path(tempfile.gettempdir())
+            allowed_roots = [root_path, temp_root]
             file_path = _norm_path(file_path)
-            if not _is_under(root_path, file_path):
+            if not _is_under_any(file_path, allowed_roots):
                 return False
             async with aiofiles.open(file_path, 'wb') as out_file:
                 try:
                     async for chunk in response.aiter_bytes(chunk_size=65536):
                         if await request.is_disconnected():
                             await out_file.close()
-                            try:
-                                if _is_under(root_path, file_path):
-                                    os.remove(file_path)
-                            except:
-                                pass
+                            _safe_unlink(file_path, allowed_roots)
                             return False
                         await out_file.write(chunk)
                 except Exception:
@@ -81,11 +114,7 @@ async def fetch_data_stream(url: str, request:Request , headers: dict = None, fi
                         await out_file.close()
                     except:
                         pass
-                    try:
-                        if _is_under(root_path, file_path):
-                            os.remove(file_path)
-                    except:
-                        pass
+                    _safe_unlink(file_path, allowed_roots)
                     return False
             return True
 
@@ -231,12 +260,14 @@ async def download_file_hybrid(request: Request,
         if data_type == 'video':
             raw_name = f"{file_prefix}{platform}_{safe_id}.mp4" if not with_watermark else f"{file_prefix}{platform}_{safe_id}_watermark.mp4"
             file_name = re.sub(r"[^A-Za-z0-9_\-\.]", "_", raw_name)
+            if not _valid_filename(file_name):
+                raise HTTPException(status_code=400, detail="Invalid filename")
             file_path = _norm_path(os.path.join(download_path, file_name))
             if not _is_under(root_path, file_path):
                 raise HTTPException(status_code=400, detail="Invalid file path")
 
             # 判断文件是否存在，存在就直接返回
-            if os.path.exists(file_path):
+            if _is_under(root_path, file_path) and os.path.exists(file_path):
                 return FileResponse(path=file_path, media_type='video/mp4', filename=file_name)
 
             # 获取对应平台的headers
@@ -310,12 +341,14 @@ async def download_file_hybrid(request: Request,
             # 压缩文件属性/Compress file properties
             raw_zip = f"{file_prefix}{platform}_{safe_id}_images.zip" if not with_watermark else f"{file_prefix}{platform}_{safe_id}_images_watermark.zip"
             zip_file_name = re.sub(r"[^A-Za-z0-9_\-\.]", "_", raw_zip)
+            if not _valid_filename(zip_file_name):
+                raise HTTPException(status_code=400, detail="Invalid filename")
             zip_file_path = _norm_path(os.path.join(download_path, zip_file_name))
             if not _is_under(root_path, zip_file_path):
                 raise HTTPException(status_code=400, detail="Invalid file path")
 
             # 判断文件是否存在，存在就直接返回、
-            if os.path.exists(zip_file_path):
+            if _is_under(root_path, zip_file_path) and os.path.exists(zip_file_path):
                 return FileResponse(path=zip_file_path, filename=zip_file_name, media_type="application/zip")
 
             # 获取图片文件/Get image file
@@ -330,6 +363,8 @@ async def download_file_hybrid(request: Request,
                 file_format = content_type.split('/')[1]
                 raw_img = f"{file_prefix}{platform}_{safe_id}_{index + 1}.{file_format}" if not with_watermark else f"{file_prefix}{platform}_{safe_id}_{index + 1}_watermark.{file_format}"
                 file_name = re.sub(r"[^A-Za-z0-9_\-\.]", "_", raw_img)
+                if not _valid_filename(file_name):
+                    raise HTTPException(status_code=400, detail="Invalid filename")
                 file_path = _norm_path(os.path.join(download_path, file_name))
                 if not _is_under(root_path, file_path):
                     raise HTTPException(status_code=400, detail="Invalid file path")
