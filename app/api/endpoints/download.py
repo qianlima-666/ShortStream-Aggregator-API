@@ -16,6 +16,7 @@ from werkzeug.utils import secure_filename
 from app.api.models.APIResponseModel import ErrorResponseModel  # 导入响应模型
 from crawlers.hybrid.hybrid_crawler import HybridCrawler  # 导入混合数据爬虫
 from crawlers.utils.logger import logger
+from crawlers.utils.utils import extract_valid_urls
 
 router = APIRouter()
 HybridCrawler = HybridCrawler()
@@ -100,11 +101,12 @@ def _is_allowed_download_url(platform: str, url: str) -> bool:
             host_ascii = host.encode('idna').decode('ascii')
         except Exception:
             return False
-        allow = {
-            "douyin": [".douyin.com", ".amemv.com", ".snssdk.com"],
-            "tiktok": [".tiktok.com"],
-            "bilibili": [".bilibili.com", ".bilivideo.com", ".hdslb.com"],
-        }.get(platform, [])
+        allow = (
+            config.get("API", {})
+            .get("AllowedDomains", {})
+            .get("download", {})
+            .get(platform, [])
+        ).get(platform, [])
         if not any(host_ascii == a.lstrip('.') or host_ascii.endswith(a) for a in allow):
             return False
         # 解析DNS并拒绝私网/本地/保留等地址
@@ -129,29 +131,36 @@ def _is_allowed_download_url(platform: str, url: str) -> bool:
 
 
 async def _safe_get(url: str, platform: str, headers: dict | None = None) -> httpx.Response:
+    sec = bool(config.get("API", {}).get("Security", {}).get("StrictValidation", True))
+    if not sec:
+        async with httpx.AsyncClient(trust_env=True, follow_redirects=True, timeout=httpx.Timeout(30)) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response
     # 就地校验并重建安全URL，增强静态分析可见性
     from urllib.parse import urlparse
     import socket
     import ipaddress
     p = urlparse(url)
     if p.scheme != "https":
-        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+        raise HTTPException(status_code=400, detail=_strict_msg(platform, "仅允许HTTPS", p.hostname or ""))
     if p.port not in (None, 443):
-        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+        raise HTTPException(status_code=400, detail=_strict_msg(platform, "仅允许标准端口443", p.hostname or ""))
     if p.username or p.password:
-        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+        raise HTTPException(status_code=400, detail=_strict_msg(platform, "URL包含用户名/密码信息", p.hostname or ""))
     host = (p.hostname or "").lower().rstrip('.')
     try:
         host_ascii = host.encode('idna').decode('ascii')
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
-    allow = {
-        "douyin": [".douyin.com", ".amemv.com", ".snssdk.com"],
-        "tiktok": [".tiktok.com"],
-        "bilibili": [".bilibili.com", ".bilivideo.com", ".hdslb.com"],
-    }.get(platform, [])
+        raise HTTPException(status_code=400, detail=_strict_msg(platform, "域名IDNA解析失败", host))
+    allow = (
+        config.get("API", {})
+        .get("AllowedDomains", {})
+        .get("download", {})
+        .get(platform, [])
+    ).get(platform, [])
     if not any(host_ascii == a.lstrip('.') or host_ascii.endswith(a) for a in allow):
-        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+        raise HTTPException(status_code=400, detail=_strict_msg(platform, "域名不在白名单", host))
     try:
         infos = socket.getaddrinfo(host_ascii, None)
         addrs = {i[4][0] for i in infos if i and i[4]}
@@ -164,16 +173,18 @@ async def _safe_get(url: str, platform: str, headers: dict | None = None) -> htt
                 or ip_obj.is_link_local
                 or ip_obj.is_multicast
             ):
-                raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+                raise HTTPException(status_code=400, detail=_strict_msg(platform, "DNS解析到私网/保留地址", host, list(addrs)))
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+        raise HTTPException(status_code=400, detail=_strict_msg(platform, "DNS解析失败", host))
     safe_url = f"https://{host_ascii}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
     async with httpx.AsyncClient(trust_env=False, follow_redirects=True, timeout=httpx.Timeout(30)) as client:
         response = await client.get(safe_url, headers=headers)
         chain = list(response.history) + [response]
         for r in chain:
             if not _is_allowed_download_url(platform, str(r.url)):
-                raise HTTPException(status_code=400, detail="Unsafe redirect detected")
+                from urllib.parse import urlparse as _up
+                _ru = _up(str(r.url))
+                raise HTTPException(status_code=400, detail=_strict_msg(platform, "重定向目标不在白名单", host=_ru.hostname or ""))
         response.raise_for_status()
         return response
 
@@ -198,33 +209,37 @@ async def fetch_data_stream(url: str, platform: str, request: Request, headers: 
         if headers is None
         else headers.get("headers")
     )
-    if not _is_allowed_download_url(platform, url):
-        return False
+    sec = bool(config.get("API", {}).get("Security", {}).get("StrictValidation", True))
+    if sec and not _is_allowed_download_url(platform, url):
+        from urllib.parse import urlparse as _up
+        _pu = _up(url)
+        raise HTTPException(status_code=400, detail=_strict_msg(platform, "初始URL不在白名单", host=_pu.hostname or ""))
     async with httpx.AsyncClient(
-        trust_env=False,
+        trust_env=not sec,
         timeout=httpx.Timeout(60),
         limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         follow_redirects=True,
     ) as client:
-        # 预检以解析最终URL并校验重定向链路（就地重建安全URL）
+        # 预检以解析最终URL并校验重定向链路（仅严格模式）
         from urllib.parse import urlparse
         import socket
         import ipaddress
         p = urlparse(url)
-        if p.scheme != "https" or p.port not in (None, 443) or p.username or p.password:
-            return False
+        if sec and (p.scheme != "https" or p.port not in (None, 443) or p.username or p.password):
+            raise HTTPException(status_code=400, detail=_strict_msg(platform, "仅允许HTTPS且标准端口，无用户信息", host=p.hostname or ""))
         host = (p.hostname or "").lower().rstrip('.')
         try:
             host_ascii = host.encode('idna').decode('ascii')
         except Exception:
             return False
-        allow = {
-            "douyin": [".douyin.com", ".amemv.com", ".snssdk.com"],
-            "tiktok": [".tiktok.com"],
-            "bilibili": [".bilibili.com", ".bilivideo.com", ".hdslb.com"],
-        }.get(platform, [])
-        if not any(host_ascii == a.lstrip('.') or host_ascii.endswith(a) for a in allow):
-            return False
+        allow = (
+            config.get("API", {})
+            .get("AllowedDomains", {})
+            .get("download", {})
+            .get(platform, [])
+        ).get(platform, [])
+        if sec and not any(host_ascii == a.lstrip('.') or host_ascii.endswith(a) for a in allow):
+            raise HTTPException(status_code=400, detail=_strict_msg(platform, "域名不在白名单", host_ascii))
         try:
             infos = socket.getaddrinfo(host_ascii, None)
             addrs = {i[4][0] for i in infos if i and i[4]}
@@ -237,18 +252,22 @@ async def fetch_data_stream(url: str, platform: str, request: Request, headers: 
                     or ip_obj.is_link_local
                     or ip_obj.is_multicast
                 ):
-                    return False
+                    if sec:
+                        raise HTTPException(status_code=400, detail=_strict_msg(platform, "DNS解析到私网/保留地址", host_ascii, list(addrs)))
         except Exception:
-            return False
+            if sec:
+                raise HTTPException(status_code=400, detail=_strict_msg(platform, "DNS解析失败", host_ascii))
         safe_url = f"https://{host_ascii}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
-        preflight = await client.get(safe_url, headers=headers)
+        preflight = await client.get(safe_url if sec else url, headers=headers)
         chain = list(preflight.history) + [preflight]
-        for r in chain:
-            if not _is_allowed_download_url(platform, str(r.url)):
-                return False
+        if sec:
+            for r in chain:
+                if not _is_allowed_download_url(platform, str(r.url)):
+                    from urllib.parse import urlparse as _up
+                    _ru = _up(str(r.url))
+                    raise HTTPException(status_code=400, detail=_strict_msg(platform, "重定向目标不在白名单", host=_ru.hostname or ""))
         final_url = str(preflight.url)
-        # 启用流式请求（不再跟随重定向）
-        async with client.stream("GET", final_url, headers=headers, follow_redirects=False) as response:
+        async with client.stream("GET", final_url if sec else url, headers=headers, follow_redirects=not sec) as response:
             response.raise_for_status()
 
             # 流式保存文件
@@ -409,7 +428,11 @@ async def download_file_hybrid(
 
     # 开始解析数据/Start parsing data
     try:
-        data = await HybridCrawler.hybrid_parsing_single_video(url, minimal=True)
+        sanitized = extract_valid_urls(url)
+        if not sanitized:
+            code = 400
+            return ErrorResponseModel(code=code, message="Invalid URL", router=request.url.path, params=dict(request.query_params))
+        data = await HybridCrawler.hybrid_parsing_single_video(sanitized, minimal=True)
     except Exception as e:
         code = 400
         return ErrorResponseModel(code=code, message=str(e), router=request.url.path, params=dict(request.query_params))
@@ -599,8 +622,6 @@ async def download_file_hybrid(
                 import os as _os
                 if _os.path.commonpath([full, base]) != base or full == base:
                     raise HTTPException(status_code=400, detail="Invalid file path")
-                if not _is_under(root_path, file_path):
-                    raise HTTPException(status_code=400, detail="Invalid file path")
                 image_file_list.append(file_path)
 
                 # 保存文件/Save file
@@ -620,3 +641,21 @@ async def download_file_hybrid(
         print(e)
         code = 400
         return ErrorResponseModel(code=code, message=str(e), router=request.url.path, params=dict(request.query_params))
+def _strict_msg(platform: str, issue: str, host: str = "", ips: list[str] | None = None) -> str:
+    allowed = (
+        config.get("API", {})
+        .get("AllowedDomains", {})
+        .get("download", {})
+        .get(platform, [])
+    )
+    extra = f" 域名：{host}" if host else ""
+    ipinfo = f" 解析到IP：{ips}" if ips else ""
+    logger.warning(
+        "严格校验拒绝: %s.%s%s. 建议在 config.yaml → API.AllowedDomains.download.%s 添加需要的域后缀或确保公网解析。当前白名单: %s",
+        issue,
+        extra,
+        ipinfo,
+        platform,
+        allowed,
+    )
+    return f"严格校验拒绝: {issue}.{extra}{ipinfo}"

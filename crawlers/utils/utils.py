@@ -141,7 +141,8 @@ def extract_valid_urls(inputs: Union[str, List[str]]) -> Union[str, List[str], N
     Returns:
         Union[str, list[str]]: 提取出的有效URL或URL列表 (Extracted valid URL or list of URLs)
     """
-    url_pattern = re.compile(r"https?://\S+")
+    # 排除反引号等包裹符，避免短链被误匹配包含无效字符
+    url_pattern = re.compile(r"https?://[^\s`]+")
 
     # 如果输入是单个字符串
     if isinstance(inputs, str):
