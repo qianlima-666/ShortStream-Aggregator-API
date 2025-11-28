@@ -129,10 +129,47 @@ def _is_allowed_download_url(platform: str, url: str) -> bool:
 
 
 async def _safe_get(url: str, platform: str, headers: dict | None = None) -> httpx.Response:
-    if not _is_allowed_download_url(platform, url):
+    # 就地校验并重建安全URL，增强静态分析可见性
+    from urllib.parse import urlparse
+    import socket
+    import ipaddress
+    p = urlparse(url)
+    if p.scheme != "https":
         raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+    if p.port not in (None, 443):
+        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+    if p.username or p.password:
+        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+    host = (p.hostname or "").lower().rstrip('.')
+    try:
+        host_ascii = host.encode('idna').decode('ascii')
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+    allow = {
+        "douyin": [".douyin.com", ".amemv.com", ".snssdk.com"],
+        "tiktok": [".tiktok.com"],
+        "bilibili": [".bilibili.com", ".bilivideo.com", ".hdslb.com"],
+    }.get(platform, [])
+    if not any(host_ascii == a.lstrip('.') or host_ascii.endswith(a) for a in allow):
+        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+    try:
+        infos = socket.getaddrinfo(host_ascii, None)
+        addrs = {i[4][0] for i in infos if i and i[4]}
+        for addr in addrs:
+            ip_obj = ipaddress.ip_address(addr)
+            if (
+                ip_obj.is_private
+                or ip_obj.is_loopback
+                or ip_obj.is_reserved
+                or ip_obj.is_link_local
+                or ip_obj.is_multicast
+            ):
+                raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+    safe_url = f"https://{host_ascii}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
     async with httpx.AsyncClient(trust_env=False, follow_redirects=True, timeout=httpx.Timeout(30)) as client:
-        response = await client.get(url, headers=headers)
+        response = await client.get(safe_url, headers=headers)
         chain = list(response.history) + [response]
         for r in chain:
             if not _is_allowed_download_url(platform, str(r.url)):
@@ -169,8 +206,42 @@ async def fetch_data_stream(url: str, platform: str, request: Request, headers: 
         limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         follow_redirects=True,
     ) as client:
-        # 预检以解析最终URL并校验重定向链路
-        preflight = await client.get(url, headers=headers)
+        # 预检以解析最终URL并校验重定向链路（就地重建安全URL）
+        from urllib.parse import urlparse
+        import socket
+        import ipaddress
+        p = urlparse(url)
+        if p.scheme != "https" or p.port not in (None, 443) or p.username or p.password:
+            return False
+        host = (p.hostname or "").lower().rstrip('.')
+        try:
+            host_ascii = host.encode('idna').decode('ascii')
+        except Exception:
+            return False
+        allow = {
+            "douyin": [".douyin.com", ".amemv.com", ".snssdk.com"],
+            "tiktok": [".tiktok.com"],
+            "bilibili": [".bilibili.com", ".bilivideo.com", ".hdslb.com"],
+        }.get(platform, [])
+        if not any(host_ascii == a.lstrip('.') or host_ascii.endswith(a) for a in allow):
+            return False
+        try:
+            infos = socket.getaddrinfo(host_ascii, None)
+            addrs = {i[4][0] for i in infos if i and i[4]}
+            for addr in addrs:
+                ip_obj = ipaddress.ip_address(addr)
+                if (
+                    ip_obj.is_private
+                    or ip_obj.is_loopback
+                    or ip_obj.is_reserved
+                    or ip_obj.is_link_local
+                    or ip_obj.is_multicast
+                ):
+                    return False
+        except Exception:
+            return False
+        safe_url = f"https://{host_ascii}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
+        preflight = await client.get(safe_url, headers=headers)
         chain = list(preflight.history) + [preflight]
         for r in chain:
             if not _is_allowed_download_url(platform, str(r.url)):

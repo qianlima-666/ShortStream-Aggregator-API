@@ -44,8 +44,11 @@ class HybridCrawler:
                         raise ValueError("b23.tv resolves to a non-public IP")
             except Exception:
                 raise ValueError("DNS resolution failed for b23.tv")
-            async with httpx.AsyncClient() as client:
-                response = await client.head(url, follow_redirects=True)
+            from urllib.parse import urlparse as _up
+            _p = _up(url)
+            safe_url = f"https://{(_p.hostname or '').lower().rstrip('.')}{_p.path or '/'}" + (f"?{_p.query}" if _p.query else "")
+            async with httpx.AsyncClient(trust_env=False) as client:
+                response = await client.head(safe_url, follow_redirects=True)
                 url = str(response.url)
 
         # 从URL中提取BV号

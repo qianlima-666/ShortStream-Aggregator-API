@@ -113,9 +113,15 @@ class TokenManager:
         }
 
         transport = httpx.HTTPTransport(retries=5)
-        with httpx.Client(transport=transport, proxies=cls.proxies) as client:
+        with httpx.Client(transport=transport, proxies=cls.proxies, trust_env=False) as client:
             try:
-                response = client.post(cls.token_conf["url"], content=payload, headers=headers)
+                api_url = cls.token_conf["url"]
+                if not is_allowed_bytedance_api_url(api_url):
+                    raise APIResponseError("目标URL不合法，不在允许的API域名集合内。")
+                from urllib.parse import urlparse
+                p = urlparse(api_url)
+                safe_url = f"https://{(p.hostname or '').lower().rstrip('.')}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
+                response = client.post(safe_url, content=payload, headers=headers, follow_redirects=True)
                 response.raise_for_status()
 
                 msToken = str(httpx.Cookies(response.cookies).get("msToken"))
@@ -167,9 +173,15 @@ class TokenManager:
         """
 
         transport = httpx.HTTPTransport(retries=5)
-        with httpx.Client(transport=transport) as client:
+        with httpx.Client(transport=transport, trust_env=False) as client:
             try:
-                response = client.post(cls.ttwid_conf["url"], content=cls.ttwid_conf["data"])
+                api_url = cls.ttwid_conf["url"]
+                if not is_allowed_bytedance_api_url(api_url):
+                    raise APIResponseError("目标URL不合法，不在允许的API域名集合内。")
+                from urllib.parse import urlparse
+                p = urlparse(api_url)
+                safe_url = f"https://{(p.hostname or '').lower().rstrip('.')}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
+                response = client.post(safe_url, content=cls.ttwid_conf["data"], follow_redirects=True)
                 response.raise_for_status()
 
                 ttwid = str(httpx.Cookies(response.cookies).get("ttwid"))
@@ -341,8 +353,11 @@ class SecUserIdFetcher:
 
         try:
             transport = httpx.AsyncHTTPTransport(retries=5)
-            async with httpx.AsyncClient(transport=transport, proxies=TokenManager.proxies, timeout=10) as client:
-                response = await client.get(url, follow_redirects=True)
+            async with httpx.AsyncClient(transport=transport, proxies=TokenManager.proxies, timeout=10, trust_env=False) as client:
+                from urllib.parse import urlparse as _up
+                _p = _up(url)
+                safe_url = f"https://{(_p.hostname or '').lower().rstrip('.')}{_p.path or '/'}" + (f"?{_p.query}" if _p.query else "")
+                response = await client.get(safe_url, follow_redirects=True)
                 # 444一般为Nginx拦截，不返回状态 (444 is generally intercepted by Nginx and does not return status)
                 if response.status_code in {200, 444}:
                     # 重定向后的URL仍需校验域名
@@ -425,11 +440,14 @@ class AwemeIdFetcher:
 
         # 重定向到完整链接
         transport = httpx.AsyncHTTPTransport(retries=5)
-        async with httpx.AsyncClient(transport=transport, proxy=None, timeout=10) as client:
+        async with httpx.AsyncClient(transport=transport, proxy=None, timeout=10, trust_env=False) as client:
             try:
                 if not is_allowed_douyin_web_url(url):
                     raise APINotFoundError("输入的URL不合法（不是 Douyin 网页域名）。类名：{0}".format(cls.__name__))
-                response = await client.get(url, follow_redirects=True)
+                from urllib.parse import urlparse as _up
+                _p = _up(url)
+                safe_url = f"https://{(_p.hostname or '').lower().rstrip('.')}{_p.path or '/'}" + (f"?{_p.query}" if _p.query else "")
+                response = await client.get(safe_url, follow_redirects=True)
                 response.raise_for_status()
 
                 response_url = str(response.url)
@@ -805,6 +823,39 @@ def is_allowed_douyin_web_url(url: str) -> bool:
             return False
         host = (parsed.hostname or "").lower().rstrip('.')
         if host not in {"v.douyin.com", "www.douyin.com"}:
+            return False
+        try:
+            infos = socket.getaddrinfo(host, None)
+            addrs = {i[4][0] for i in infos if i and i[4]}
+            for addr in addrs:
+                ip_obj = ipaddress.ip_address(addr)
+                if (
+                    ip_obj.is_private
+                    or ip_obj.is_loopback
+                    or ip_obj.is_reserved
+                    or ip_obj.is_link_local
+                    or ip_obj.is_multicast
+                ):
+                    return False
+        except Exception:
+            return False
+        return True
+    except Exception:
+        return False
+
+def is_allowed_bytedance_api_url(url: str) -> bool:
+    try:
+        from urllib.parse import urlparse
+        import socket
+        import ipaddress
+        p = urlparse(url)
+        if p.scheme != "https":
+            return False
+        if p.port not in (None, 443):
+            return False
+        host = (p.hostname or "").lower().rstrip('.')
+        allowed = {"mssdk.bytedance.com", "ttwid.bytedance.com"}
+        if host not in allowed:
             return False
         try:
             infos = socket.getaddrinfo(host, None)
