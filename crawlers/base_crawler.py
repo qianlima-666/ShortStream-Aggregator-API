@@ -48,7 +48,10 @@ class BaseCrawler:
 
         # 限制最大连接数 / Limit the maximum number of connections
         self._max_connections = max_connections
-        self.limits = httpx.Limits(max_connections=max_connections)
+        self.limits = httpx.Limits(
+            max_connections=max_connections,
+            max_keepalive_connections=max(1, max_connections // 2)
+        )
 
         # 业务逻辑重试次数 / Business logic retry count
         self._max_retries = max_retries
@@ -149,7 +152,8 @@ class BaseCrawler:
         """
         for attempt in range(self._max_retries):
             try:
-                response = await self.aclient.get(url, follow_redirects=True)
+                async with self.semaphore:
+                    response = await self.aclient.get(url, follow_redirects=True)
                 if not response.text.strip() or not response.content:
                     error_message = "第 {0} 次响应内容为空, 状态码: {1}, URL:{2}".format(attempt + 1,
                                                                                          response.status_code,
@@ -193,12 +197,13 @@ class BaseCrawler:
         """
         for attempt in range(self._max_retries):
             try:
-                response = await self.aclient.post(
-                    url,
-                    json=None if not params else dict(params),
-                    data=None if not data else data,
-                    follow_redirects=True
-                )
+                async with self.semaphore:
+                    response = await self.aclient.post(
+                        url,
+                        json=None if not params else dict(params),
+                        data=None if not data else data,
+                        follow_redirects=True
+                    )
                 if not response.text.strip() or not response.content:
                     error_message = "第 {0} 次响应内容为空, 状态码: {1}, URL:{2}".format(attempt + 1,
                                                                                          response.status_code,
@@ -241,7 +246,8 @@ class BaseCrawler:
             response: 响应内容 (Response content)
         """
         try:
-            response = await self.aclient.head(url)
+            async with self.semaphore:
+                response = await self.aclient.head(url)
             # logger.info("响应状态码: {0}".format(response.status_code))
             response.raise_for_status()
             return response

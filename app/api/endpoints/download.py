@@ -1,7 +1,9 @@
 import os
+import re
 import zipfile
-import subprocess
 import tempfile
+import asyncio
+import time
 
 import aiofiles
 import httpx
@@ -15,6 +17,9 @@ from crawlers.hybrid.hybrid_crawler import HybridCrawler  # 导入混合数据�
 
 router = APIRouter()
 HybridCrawler = HybridCrawler()
+
+# FFmpeg 合并并发控制（作为简单队列，限制同时仅运行一个合并任务）
+_ffmpeg_sem = asyncio.Semaphore(1)
 
 # 读取上级再上级目录的配置文件
 config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'config.yaml')
@@ -35,20 +40,36 @@ async def fetch_data_stream(url: str, request:Request , headers: dict = None, fi
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     } if headers is None else headers.get('headers')
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(60),
+        limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
+    ) as client:
         # 启用流式请求
         async with client.stream("GET", url, headers=headers) as response:
             response.raise_for_status()
 
             # 流式保存文件
             async with aiofiles.open(file_path, 'wb') as out_file:
-                async for chunk in response.aiter_bytes():
-                    if await request.is_disconnected():
-                        print("客户端断开连接，清理未完成的文件")
+                try:
+                    async for chunk in response.aiter_bytes(chunk_size=65536):
+                        if await request.is_disconnected():
+                            await out_file.close()
+                            try:
+                                os.remove(file_path)
+                            except:
+                                pass
+                            return False
+                        await out_file.write(chunk)
+                except Exception:
+                    try:
                         await out_file.close()
+                    except:
+                        pass
+                    try:
                         os.remove(file_path)
-                        return False
-                    await out_file.write(chunk)
+                    except:
+                        pass
+                    return False
             return True
 
 async def merge_bilibili_video_audio(video_url: str, audio_url: str, request: Request, output_path: str, headers: dict) -> bool:
@@ -71,29 +92,30 @@ async def merge_bilibili_video_audio(video_url: str, audio_url: str, request: Re
             print("Failed to download video or audio stream")
             return False
         
-        # 使用 FFmpeg 合并视频和音频
+        # 使用 FFmpeg 合并视频和音频（异步子进程，避免阻塞）
         ffmpeg_cmd = [
-            'ffmpeg', '-y',  # -y 覆盖输出文件
-            '-i', video_temp_path,  # 视频输入
-            '-i', audio_temp_path,  # 音频输入
-            '-c:v', 'copy',  # 复制视频编码，不重新编码
-            '-c:a', 'copy',  # 复制音频编码，不重新编码（保持原始质量）
-            '-f', 'mp4',     # 确保输出格式为MP4
+            'ffmpeg', '-y',
+            '-i', video_temp_path,
+            '-i', audio_temp_path,
+            '-c:v', 'copy',
+            '-c:a', 'copy',
+            '-f', 'mp4',
             output_path
         ]
-        
         logger.info("FFmpeg merge start output=%s", output_path)
-        logger.info("FFmpeg finished code=%s", result.returncode)
-        if result.stderr:
-            logger.warning("FFmpeg stderr size=%d", len(result.stderr))
-        if result.stdout:
-            logger.debug("FFmpeg stdout size=%d", len(result.stdout))
-        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
-        logger.info("FFmpeg finished code=%s", result.returncode)
-        if result.stderr:
-            logger.warning("FFmpeg stderr size=%d", len(result.stderr))
-        if result.stdout:
-            logger.debug("FFmpeg stdout size=%d", len(result.stdout))
+        async with _ffmpeg_sem:
+            process = await asyncio.create_subprocess_exec(
+                *ffmpeg_cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stderr = b""
+            if process.stderr is not None:
+                stderr = await process.stderr.read()
+            returncode = await process.wait()
+        logger.info("FFmpeg finished code=%s", returncode)
+        if stderr:
+            logger.warning("FFmpeg stderr size=%d", len(stderr))
         
         # 清理临时文件
         try:
@@ -102,7 +124,7 @@ async def merge_bilibili_video_audio(video_url: str, audio_url: str, request: Re
         except:
             pass
         
-        return result.returncode == 0
+        return returncode == 0
         
     except Exception as e:
         # 清理临时文件
@@ -171,16 +193,20 @@ async def download_file_hybrid(request: Request,
     try:
         data_type = data.get('type')
         platform = data.get('platform')
-        video_id = data.get('video_id')  # 改为使用video_id
+        video_id = data.get('video_id')
+        safe_id = re.sub(r"[^A-Za-z0-9_\-]", "_", str(video_id))
         file_prefix = config.get("API").get("Download_File_Prefix") if prefix else ''
-        download_path = os.path.join(config.get("API").get("Download_Path"), f"{platform}_{data_type}")
+        root_path = os.path.abspath(config.get("API").get("Download_Path"))
+        download_path = os.path.abspath(os.path.join(root_path, f"{platform}_{data_type}"))
+        if not download_path.startswith(root_path):
+            raise HTTPException(status_code=400, detail="Invalid download path")
 
         # 确保目录存在/Ensure the directory exists
         os.makedirs(download_path, exist_ok=True)
 
         # 下载视频文件/Download video file
         if data_type == 'video':
-            file_name = f"{file_prefix}{platform}_{video_id}.mp4" if not with_watermark else f"{file_prefix}{platform}_{video_id}_watermark.mp4"
+            file_name = f"{file_prefix}{platform}_{safe_id}.mp4" if not with_watermark else f"{file_prefix}{platform}_{safe_id}_watermark.mp4"
             file_path = os.path.join(download_path, file_name)
 
             # 判断文件是否存在，存在就直接返回
@@ -206,22 +232,45 @@ async def download_file_hybrid(request: Request,
                         detail="Failed to get video or audio URL from Bilibili"
                     )
                 
-                # 使用专门的函数合并音视频
+                start = time.perf_counter()
                 success = await merge_bilibili_video_audio(video_url, audio_url, request, file_path, __headers.get('headers'))
                 if not success:
                     raise HTTPException(
                         status_code=500,
                         detail="Failed to merge Bilibili video and audio streams"
                     )
+                try:
+                    size = os.path.getsize(file_path)
+                except Exception:
+                    size = 0
+                from crawlers.utils.logger import log_metric
+                log_metric(
+                    "bilibili_merge",
+                    output=file_path,
+                    elapsed_ms=int((time.perf_counter() - start) * 1000),
+                    size_bytes=size
+                )
             else:
                 # 其他平台的常规处理
                 url = data.get('video_data').get('nwm_video_url_HQ') if not with_watermark else data.get('video_data').get('wm_video_url_HQ')
+                start = time.perf_counter()
                 success = await fetch_data_stream(url, request, headers=__headers, file_path=file_path)
                 if not success:
                     raise HTTPException(
                         status_code=500,
                         detail="An error occurred while fetching data"
                     )
+                try:
+                    size = os.path.getsize(file_path)
+                except Exception:
+                    size = 0
+                from crawlers.utils.logger import log_metric
+                log_metric(
+                    f"{platform}_download",
+                    output=file_path,
+                    elapsed_ms=int((time.perf_counter() - start) * 1000),
+                    size_bytes=size
+                )
 
             # # 保存文件
             # async with aiofiles.open(file_path, 'wb') as out_file:
@@ -233,7 +282,7 @@ async def download_file_hybrid(request: Request,
         # 下载图片文件/Download image file
         elif data_type == 'image':
             # 压缩文件属性/Compress file properties
-            zip_file_name = f"{file_prefix}{platform}_{video_id}_images.zip" if not with_watermark else f"{file_prefix}{platform}_{video_id}_images_watermark.zip"
+            zip_file_name = f"{file_prefix}{platform}_{safe_id}_images.zip" if not with_watermark else f"{file_prefix}{platform}_{safe_id}_images_watermark.zip"
             zip_file_path = os.path.join(download_path, zip_file_name)
 
             # 判断文件是否存在，存在就直接返回、
@@ -250,7 +299,7 @@ async def download_file_hybrid(request: Request,
                 index = int(urls.index(url))
                 content_type = response.headers.get('content-type')
                 file_format = content_type.split('/')[1]
-                file_name = f"{file_prefix}{platform}_{video_id}_{index + 1}.{file_format}" if not with_watermark else f"{file_prefix}{platform}_{video_id}_{index + 1}_watermark.{file_format}"
+                file_name = f"{file_prefix}{platform}_{safe_id}_{index + 1}.{file_format}" if not with_watermark else f"{file_prefix}{platform}_{safe_id}_{index + 1}_watermark.{file_format}"
                 file_path = os.path.join(download_path, file_name)
                 image_file_list.append(file_path)
 

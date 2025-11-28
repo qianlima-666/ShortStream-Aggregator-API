@@ -1,9 +1,10 @@
 # FastAPI APP
 import uvicorn
-from fastapi import FastAPI, Depends, HTTPException, status, Security
+from fastapi import FastAPI, Depends, HTTPException, status, Security, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import APIKeyHeader
 from app.api.router import router as api_router
+from starlette.middleware.cors import CORSMiddleware
 
 # PyWebIO APP
 from app.web.app import MainView
@@ -14,6 +15,7 @@ import os
 
 # YAML
 import yaml
+import asyncio
 
 # Load Config
 
@@ -96,6 +98,31 @@ app = FastAPI(
     openapi_tags=tags_metadata,
     docs_url=docs_url,  # 文档路径
     redoc_url=redoc_url,  # redoc文档路径
+)
+
+# 速率限制（并发限制）
+rate_cfg = config.get('API', {}).get('Rate_Limit', {})
+max_concurrent = int(rate_cfg.get('Max_Concurrent', 100))
+_rate_sem = asyncio.Semaphore(max_concurrent)
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    async with _rate_sem:
+        response = await call_next(request)
+        return response
+
+# CORS 白名单
+cors_cfg = config.get('API', {}).get('CORS', {})
+allow_origins = cors_cfg.get('Allow_Origins', ["*"])
+allow_methods = cors_cfg.get('Allow_Methods', ["*"])
+allow_headers = cors_cfg.get('Allow_Headers', ["*"])
+allow_credentials = bool(cors_cfg.get('Allow_Credentials', False))
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_credentials=allow_credentials,
+    allow_methods=allow_methods,
+    allow_headers=allow_headers,
 )
 
 # 静态资源：挂载本地 logo 目录到 /logo

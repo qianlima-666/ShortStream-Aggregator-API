@@ -2,6 +2,7 @@ import threading
 import time
 import logging
 import datetime
+import json
 
 from pathlib import Path
 from rich.logging import RichHandler
@@ -133,3 +134,9 @@ def log_setup(log_to_console=True):
 
 
 logger = log_setup()
+
+def log_metric(event: str, **fields):
+    try:
+        logger.info("METRIC %s %s", event, json.dumps(fields, ensure_ascii=False))
+    except Exception:
+        logger.info("METRIC %s %s", event, str(fields))
