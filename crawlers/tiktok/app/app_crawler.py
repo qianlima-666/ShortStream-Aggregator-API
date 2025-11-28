@@ -5,7 +5,7 @@ import time  # 时间操作
 import yaml  # 配置文件
 
 # 重试机制
-from tenacity import *
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 # 基础爬虫客户端和TikTokAPI端点
 from crawlers.base_crawler import BaseCrawler

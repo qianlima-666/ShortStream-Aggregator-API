@@ -45,7 +45,7 @@ async def fetch_one_video(request: Request, bv_id: str = Query(example="BV1M1421
 
 # 获取视频流地址
 @router.get("/fetch_video_playurl", response_model=ResponseModel, summary="获取视频流地址/Get video playurl")
-async def fetch_one_video(
+async def fetch_video_playurl_endpoint(
     request: Request,
     bv_id: str = Query(example="BV1y7411Q7Eq", description="作品id/Video id"),
     cid: str = Query(example="171776208", description="作品cid/Video cid"),
@@ -135,7 +135,9 @@ async def fetch_user_post_videos(
 @router.get(
     "/fetch_collect_folders", response_model=ResponseModel, summary="获取用户所有收藏夹信息/Get user collection folders"
 )
-async def fetch_collect_folders(request: Request, uid: str = Query(example="178360345", description="用户UID")):
+async def fetch_user_collect_folders_endpoint(
+    request: Request, uid: str = Query(example="178360345", description="用户UID")
+):
     """
     # [中文]
     ### 用途:
@@ -220,7 +222,7 @@ async def fetch_user_collection_videos(
 @router.get(
     "/fetch_user_profile", response_model=ResponseModel, summary="获取指定用户的信息/Get information of specified user"
 )
-async def fetch_collect_folders(request: Request, uid: str = Query(example="178360345", description="用户UID")):
+async def fetch_user_profile_endpoint(request: Request, uid: str = Query(example="178360345", description="用户UID")):
     """
     # [中文]
     ### 用途:
@@ -260,7 +262,7 @@ async def fetch_collect_folders(request: Request, uid: str = Query(example="1783
     response_model=ResponseModel,
     summary="获取综合热门视频信息/Get comprehensive popular video information",
 )
-async def fetch_collect_folders(request: Request, pn: int = Query(default=1, description="页码/Page number")):
+async def fetch_com_popular_endpoint(request: Request, pn: int = Query(default=1, description="页码/Page number")):
     """
     # [中文]
     ### 用途:
@@ -300,7 +302,7 @@ async def fetch_collect_folders(request: Request, pn: int = Query(default=1, des
     response_model=ResponseModel,
     summary="获取指定视频的评论/Get comments on the specified video",
 )
-async def fetch_collect_folders(
+async def fetch_video_comments_endpoint(
     request: Request,
     bv_id: str = Query(example="BV1M1421t7hT", description="作品id/Video id"),
     pn: int = Query(default=1, description="页码/Page number"),
@@ -347,7 +349,7 @@ async def fetch_collect_folders(
     response_model=ResponseModel,
     summary="获取视频下指定评论的回复/Get reply to the specified comment",
 )
-async def fetch_collect_folders(
+async def fetch_comment_reply_endpoint(
     request: Request,
     bv_id: str = Query(example="BV1M1421t7hT", description="作品id/Video id"),
     pn: int = Query(default=1, description="页码/Page number"),
@@ -398,7 +400,7 @@ async def fetch_collect_folders(
     response_model=ResponseModel,
     summary="获取指定用户动态/Get dynamic information of specified user",
 )
-async def fetch_collect_folders(
+async def fetch_user_dynamic_endpoint(
     request: Request,
     uid: str = Query(example="16015678", description="用户UID"),
     offset: str = Query(default="", example="953154282154098691", description="开始索引/offset"),
@@ -441,7 +443,9 @@ async def fetch_collect_folders(
 
 # 获取视频实时弹幕
 @router.get("/fetch_video_danmaku", response_model=ResponseModel, summary="获取视频实时弹幕/Get Video Danmaku")
-async def fetch_one_video(request: Request, cid: str = Query(example="1639235405", description="作品cid/Video cid")):
+async def fetch_video_danmaku_endpoint(
+    request: Request, cid: str = Query(example="1639235405", description="作品cid/Video cid")
+):
     """
     # [中文]
     ### 用途:
@@ -481,7 +485,7 @@ async def fetch_one_video(request: Request, cid: str = Query(example="1639235405
     response_model=ResponseModel,
     summary="获取指定直播间信息/Get information of specified live room",
 )
-async def fetch_collect_folders(
+async def fetch_live_room_detail_endpoint(
     request: Request, room_id: str = Query(example="22816111", description="直播间ID/Live room ID")
 ):
     """
@@ -521,7 +525,7 @@ async def fetch_collect_folders(
 @router.get(
     "/fetch_live_videos", response_model=ResponseModel, summary="获取直播间视频流/Get live video data of specified room"
 )
-async def fetch_collect_folders(
+async def fetch_live_videos_endpoint(
     request: Request, room_id: str = Query(example="1815229528", description="直播间ID/Live room ID")
 ):
     """
@@ -563,7 +567,7 @@ async def fetch_collect_folders(
     response_model=ResponseModel,
     summary="获取指定分区正在直播的主播/Get live streamers of specified live area",
 )
-async def fetch_collect_folders(
+async def fetch_live_streamers_endpoint(
     request: Request,
     area_id: str = Query(example="9", description="直播分区id/Live area ID"),
     pn: int = Query(default=1, description="页码/Page number"),
@@ -608,7 +612,7 @@ async def fetch_collect_folders(
 @router.get(
     "/fetch_all_live_areas", response_model=ResponseModel, summary="获取所有直播分区列表/Get a list of all live areas"
 )
-async def fetch_collect_folders(
+async def fetch_all_live_areas_endpoint(
     request: Request,
 ):
     """
@@ -643,7 +647,9 @@ async def fetch_collect_folders(
 
 # 通过bv号获得视频aid号
 @router.get("/bv_to_aid", response_model=ResponseModel, summary="通过bv号获得视频aid号/Generate aid by bvid")
-async def fetch_one_video(request: Request, bv_id: str = Query(example="BV1M1421t7hT", description="作品id/Video id")):
+async def bv_to_aid_endpoint(
+    request: Request, bv_id: str = Query(example="BV1M1421t7hT", description="作品id/Video id")
+):
     """
     # [中文]
     ### 用途:
@@ -681,7 +687,9 @@ async def fetch_one_video(request: Request, bv_id: str = Query(example="BV1M1421
 @router.get(
     "/fetch_video_parts", response_model=ResponseModel, summary="通过bv号获得视频分p信息/Get Video Parts By bvid"
 )
-async def fetch_one_video(request: Request, bv_id: str = Query(example="BV1vf421i7hV", description="作品id/Video id")):
+async def fetch_video_parts_endpoint(
+    request: Request, bv_id: str = Query(example="BV1vf421i7hV", description="作品id/Video id")
+):
     """
     # [中文]
     ### 用途:

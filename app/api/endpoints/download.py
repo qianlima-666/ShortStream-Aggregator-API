@@ -132,7 +132,7 @@ async def fetch_data_stream(url: str, request: Request, headers: dict = None, fi
                 except Exception:
                     try:
                         await out_file.close()
-                    except:
+                    except Exception:
                         pass
                     _safe_unlink(file_path, allowed_roots)
                     return False
@@ -194,7 +194,7 @@ async def merge_bilibili_video_audio(
         try:
             os.unlink(video_temp_path)
             os.unlink(audio_temp_path)
-        except:
+        except Exception:
             pass
 
         return returncode == 0
@@ -204,7 +204,7 @@ async def merge_bilibili_video_audio(
         try:
             os.unlink(video_temp_path)
             os.unlink(audio_temp_path)
-        except:
+        except Exception:
             pass
         logger.error("FFmpeg merge error: %s", e)
         return False
@@ -278,7 +278,7 @@ async def download_file_hybrid(
         allowed_platforms = {"douyin", "tiktok", "bilibili"}
         if platform not in allowed_platforms:
             raise HTTPException(status_code=400, detail="Invalid platform specified")
-        allowed_types = {"video", "image"}
+        # allowed_types not used
         allowed_subdirs = {
             ("douyin", "video"): "douyin_video",
             ("douyin", "image"): "douyin_image",

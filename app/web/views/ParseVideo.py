@@ -3,8 +3,25 @@ import os
 import time
 
 import yaml
-from pywebio.input import *
-from pywebio.output import *
+from pywebio.input import TEXT, textarea
+from pywebio.output import (
+    clear,
+    put_button,
+    put_code,
+    put_error,
+    put_html,
+    put_image,
+    put_info,
+    put_link,
+    put_markdown,
+    put_row,
+    put_scope,
+    put_success,
+    put_table,
+    put_warning,
+    scroll_to,
+    use_scope,
+)
 from pywebio_battery import put_video
 
 from app.web.views.ViewsUtils import ViewsUtils

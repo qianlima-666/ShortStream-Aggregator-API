@@ -62,14 +62,14 @@ class XBogus:
         md5_hash.update(bytes(array))
         return md5_hash.hexdigest()
 
-    def encoding_conversion(self, a, b, c, e, d, t, f, r, n, o, i, _, x, u, s, l, v, h, p):
+    def encoding_conversion(self, a, b, c, e, d, t, f, r, n, o, i, _, x, u, s, l_val, v, h, p):
         """
         第一次编码转换。
         Perform encoding conversion.
         """
         y = [a]
         y.append(int(i))
-        y.extend([b, _, c, x, e, u, d, s, t, l, f, v, r, h, n, p, o])
+        y.extend([b, _, c, x, e, u, d, s, t, l_val, f, v, r, h, n, p, o])
         re = bytes(y).decode("ISO-8859-1")
         return re
 

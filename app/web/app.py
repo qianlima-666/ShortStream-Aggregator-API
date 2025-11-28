@@ -10,8 +10,8 @@ import time
 import yaml
 from pywebio import config as pywebio_config
 from pywebio import session
-from pywebio.input import *
-from pywebio.output import *
+from pywebio.input import PASSWORD, input, input_group, select
+from pywebio.output import put_button, put_html, put_markdown, put_row, toast, use_scope
 
 from app.web.views.About import about_pop_window
 from app.web.views.Document import api_document_pop_window
