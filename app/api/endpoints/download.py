@@ -10,6 +10,7 @@ from fastapi import APIRouter, Request, Query, HTTPException  # 导入FastAPI组
 from starlette.responses import FileResponse
 
 from app.api.models.APIResponseModel import ErrorResponseModel  # 导入响应模型
+from crawlers.utils.logger import logger
 from crawlers.hybrid.hybrid_crawler import HybridCrawler  # 导入混合数据爬虫
 
 router = APIRouter()
@@ -81,13 +82,18 @@ async def merge_bilibili_video_audio(video_url: str, audio_url: str, request: Re
             output_path
         ]
         
-        print(f"FFmpeg command: {' '.join(ffmpeg_cmd)}")
-        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
-        print(f"FFmpeg return code: {result.returncode}")
+        logger.info("FFmpeg merge start output=%s", output_path)
+        logger.info("FFmpeg finished code=%s", result.returncode)
         if result.stderr:
-            print(f"FFmpeg stderr: {result.stderr}")
+            logger.warning("FFmpeg stderr size=%d", len(result.stderr))
         if result.stdout:
-            print(f"FFmpeg stdout: {result.stdout}")
+            logger.debug("FFmpeg stdout size=%d", len(result.stdout))
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+        logger.info("FFmpeg finished code=%s", result.returncode)
+        if result.stderr:
+            logger.warning("FFmpeg stderr size=%d", len(result.stderr))
+        if result.stdout:
+            logger.debug("FFmpeg stdout size=%d", len(result.stdout))
         
         # 清理临时文件
         try:
@@ -105,7 +111,7 @@ async def merge_bilibili_video_audio(video_url: str, audio_url: str, request: Re
             os.unlink(audio_temp_path)
         except:
             pass
-        print(f"Error merging video and audio: {e}")
+        logger.error("FFmpeg merge error: %s", e)
         return False
 
 @router.get("/download", summary="在线下载抖音|TikTok|Bilibili视频/图片/Online download Douyin|TikTok|Bilibili video/image")
