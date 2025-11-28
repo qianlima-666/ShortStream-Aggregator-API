@@ -28,7 +28,7 @@ with open(config_path, 'r', encoding='utf-8') as file:
     config = yaml.safe_load(file)
 
 def _norm_path(p: str) -> str:
-    return os.path.abspath(os.path.normpath(p))
+    return os.path.realpath(os.path.normpath(p))
 
 def _is_under(root: str, p: str) -> bool:
     try:
@@ -44,9 +44,9 @@ def _is_under(root: str, p: str) -> bool:
 
 def _is_under_any(p: str, roots: list[str]) -> bool:
     try:
-        rp = Path(_norm_path(p)).resolve(strict=False)
+        rp = Path(_norm_path(p)).resolve()
         for r in roots:
-            rr = Path(_norm_path(r)).resolve(strict=False)
+            rr = Path(_norm_path(r)).resolve()
             try:
                 rp.relative_to(rr)
                 return True
@@ -69,6 +69,12 @@ def _valid_filename(name: str) -> bool:
     if '/' in name or '\\' in name:
         return False
     if name in {'.', '..'}:
+        return False
+    if name.startswith('.'):
+        return False
+    if name.startswith(os.sep):
+        return False
+    if '..' in name:
         return False
     return True
 
@@ -244,11 +250,23 @@ async def download_file_hybrid(request: Request,
         allowed_platforms = {'douyin','tiktok','bilibili'}
         if platform not in allowed_platforms:
             raise HTTPException(status_code=400, detail="Invalid platform specified")
+        allowed_types = {'video','image'}
+        allowed_subdirs = {
+            ('douyin','video'): 'douyin_video',
+            ('douyin','image'): 'douyin_image',
+            ('tiktok','video'): 'tiktok_video',
+            ('tiktok','image'): 'tiktok_image',
+            ('bilibili','video'): 'bilibili_video',
+            ('bilibili','image'): 'bilibili_image',
+        }
         video_id = data.get('video_id')
         safe_id = re.sub(r"[^A-Za-z0-9_\-]", "_", str(video_id))
         file_prefix = re.sub(r"[^A-Za-z0-9_\-]", "_", str(config.get("API").get("Download_File_Prefix"))) if prefix else ''
         root_path = _norm_path(config.get("API").get("Download_Path"))
-        download_subdir = f"{platform}_{data_type}"
+        try:
+            download_subdir = allowed_subdirs[(platform, data_type)]
+        except KeyError:
+            raise HTTPException(status_code=400, detail="Invalid directory combination")
         download_path = _norm_path(os.path.join(root_path, download_subdir))
         if not _is_under(root_path, download_path):
             raise HTTPException(status_code=400, detail="Invalid download path")
@@ -263,7 +281,7 @@ async def download_file_hybrid(request: Request,
             if not _valid_filename(file_name):
                 raise HTTPException(status_code=400, detail="Invalid filename")
             file_path = _norm_path(os.path.join(download_path, file_name))
-            if not _is_under(root_path, file_path):
+            if not _is_under(root_path, file_path) or file_path == root_path:
                 raise HTTPException(status_code=400, detail="Invalid file path")
 
             # 判断文件是否存在，存在就直接返回
@@ -344,7 +362,7 @@ async def download_file_hybrid(request: Request,
             if not _valid_filename(zip_file_name):
                 raise HTTPException(status_code=400, detail="Invalid filename")
             zip_file_path = _norm_path(os.path.join(download_path, zip_file_name))
-            if not _is_under(root_path, zip_file_path):
+            if not _is_under(root_path, zip_file_path) or zip_file_path == root_path:
                 raise HTTPException(status_code=400, detail="Invalid file path")
 
             # 判断文件是否存在，存在就直接返回、
