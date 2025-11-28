@@ -91,17 +91,25 @@ def _is_allowed_download_url(platform: str, url: str) -> bool:
         # 仅允许标准端口
         if p.port not in (None, 443):
             return False
+        # 禁止在URL中携带用户信息
+        if p.username or p.password:
+            return False
+        # 规范化主机名并转为IDNA ASCII
         host = (p.hostname or "").lower().rstrip('.')
+        try:
+            host_ascii = host.encode('idna').decode('ascii')
+        except Exception:
+            return False
         allow = {
             "douyin": [".douyin.com", ".amemv.com", ".snssdk.com"],
             "tiktok": [".tiktok.com"],
             "bilibili": [".bilibili.com", ".bilivideo.com", ".hdslb.com"],
         }.get(platform, [])
-        if not any(host == a.lstrip('.') or host.endswith(a) for a in allow):
+        if not any(host_ascii == a.lstrip('.') or host_ascii.endswith(a) for a in allow):
             return False
         # 解析DNS并拒绝私网/本地/保留等地址
         try:
-            infos = socket.getaddrinfo(host, None)
+            infos = socket.getaddrinfo(host_ascii, None)
             addrs = {i[4][0] for i in infos if i and i[4]}
             for addr in addrs:
                 ip_obj = ipaddress.ip_address(addr)
@@ -120,6 +128,19 @@ def _is_allowed_download_url(platform: str, url: str) -> bool:
         return False
 
 
+async def _safe_get(url: str, platform: str, headers: dict | None = None) -> httpx.Response:
+    if not _is_allowed_download_url(platform, url):
+        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
+    async with httpx.AsyncClient(trust_env=False, follow_redirects=True, timeout=httpx.Timeout(30)) as client:
+        response = await client.get(url, headers=headers)
+        chain = list(response.history) + [response]
+        for r in chain:
+            if not _is_allowed_download_url(platform, str(r.url)):
+                raise HTTPException(status_code=400, detail="Unsafe redirect detected")
+        response.raise_for_status()
+        return response
+
+
 async def fetch_data(url: str, platform: str, headers: dict = None):
     headers = (
         {
@@ -128,12 +149,7 @@ async def fetch_data(url: str, platform: str, headers: dict = None):
         if headers is None
         else headers.get("headers")
     )
-    if not _is_allowed_download_url(platform, url):
-        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()  # 确保响应是成功的
-        return response
+    return await _safe_get(url, platform, headers=headers)
 
 
 # 下载视频专用
@@ -148,10 +164,20 @@ async def fetch_data_stream(url: str, platform: str, request: Request, headers: 
     if not _is_allowed_download_url(platform, url):
         return False
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(60), limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
+        trust_env=False,
+        timeout=httpx.Timeout(60),
+        limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+        follow_redirects=True,
     ) as client:
-        # 启用流式请求
-        async with client.stream("GET", url, headers=headers) as response:
+        # 预检以解析最终URL并校验重定向链路
+        preflight = await client.get(url, headers=headers)
+        chain = list(preflight.history) + [preflight]
+        for r in chain:
+            if not _is_allowed_download_url(platform, str(r.url)):
+                return False
+        final_url = str(preflight.url)
+        # 启用流式请求（不再跟随重定向）
+        async with client.stream("GET", final_url, headers=headers, follow_redirects=False) as response:
             response.raise_for_status()
 
             # 流式保存文件
