@@ -1,41 +1,8 @@
-# ==============================================================================
-# Copyright (C) 2021 Evil0ctal
-#
-# This file is part of the Douyin_TikTok_Download_API project.
-#
-# This project is licensed under the Apache License 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-# 　　　　 　　  ＿＿
-# 　　　 　　 ／＞　　フ
-# 　　　 　　| 　_　 _ l
-# 　 　　 　／` ミ＿xノ
-# 　　 　 /　　　 　 |       Feed me Stars ⭐ ️
-# 　　　 /　 ヽ　　 ﾉ
-# 　 　 │　　|　|　|
-# 　／￣|　　 |　|　|
-# 　| (￣ヽ＿_ヽ_)__)
-# 　＼二つ
-# ==============================================================================
-#
-# Contributor Link:
-# - https://github.com/Evil0ctal
-# - https://github.com/Johnserf-Seed
-#
-# ==============================================================================
-
-
 # FastAPI APP
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, status, Security
+from fastapi.staticfiles import StaticFiles
+from fastapi.security import APIKeyHeader
 from app.api.router import router as api_router
 
 # PyWebIO APP
@@ -99,35 +66,31 @@ description = f"""
 ### [中文]
 
 #### 关于
-- **Github**: [Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API)
+- **项目名称**: 短流聚合 API（ShortStream Aggregator API）
 - **版本**: `{version}`
 - **更新时间**: `{update_time}`
 - **环境**: `{environment}`
-- **文档**: [API Documentation](https://douyin.wtf/docs)
+- **基于**: [Evil0ctal/Douyin_TikTok_Download_API@42784ffc83a72a516bfe952153ad7e2a3998d16c](https://github.com/Evil0ctal/Douyin_TikTok_Download_API/tree/42784ffc83a72a516bfe952153ad7e2a3998d16c) 开发
 #### 备注
 - 本项目仅供学习交流使用，不得用于违法用途，否则后果自负。
-- 如果你不想自己部署，可以直接使用我们的在线API服务：[Douyin_TikTok_Download_API](https://douyin.wtf/docs)
-- 如果你需要更稳定以及更多功能的API服务，可以使用付费API服务：[TikHub API](https://api.tikhub.io/)
 
 ### [English]
 
 #### About
-- **Github**: [Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API)
+- **Project Name**: ShortStream Aggregator API（短流聚合 API）
 - **Version**: `{version}`
 - **Last Updated**: `{update_time}`
 - **Environment**: `{environment}`
-- **Documentation**: [API Documentation](https://douyin.wtf/docs)
+- **Based on**: Developed from [Evil0ctal/Douyin_TikTok_Download_API@42784ffc83a72a516bfe952153ad7e2a3998d16c](https://github.com/Evil0ctal/Douyin_TikTok_Download_API/tree/42784ffc83a72a516bfe952153ad7e2a3998d16c)
 #### Note
 - This project is for learning and communication only, and shall not be used for illegal purposes, otherwise the consequences shall be borne by yourself.
-- If you do not want to deploy it yourself, you can directly use our online API service: [Douyin_TikTok_Download_API](https://douyin.wtf/docs)
-- If you need a more stable and feature-rich API service, you can use the paid API service: [TikHub API](https://api.tikhub.io)
 """
 
 docs_url = config['API']['Docs_URL']
 redoc_url = config['API']['Redoc_URL']
 
 app = FastAPI(
-    title="Douyin TikTok Download API",
+    title="短流聚合 API（ShortStream Aggregator API）",
     description=description,
     version=version,
     openapi_tags=tags_metadata,
@@ -135,8 +98,28 @@ app = FastAPI(
     redoc_url=redoc_url,  # redoc文档路径
 )
 
+# 静态资源：挂载本地 logo 目录到 /logo
+logo_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logo')
+if os.path.isdir(logo_dir):
+    app.mount("/logo", StaticFiles(directory=logo_dir), name="logo")
+
+auth_cfg = config.get('API', {}).get('Auth', {})
+auth_enabled = bool(auth_cfg.get('Enabled', False))
+auth_header_name = auth_cfg.get('Header_Name', 'X-API-Key')
+auth_token = auth_cfg.get('Token', '')
+api_key_header = APIKeyHeader(name=auth_header_name, auto_error=False)
+
+def api_auth_dependency(token: str = Security(api_key_header)):
+    if not auth_enabled:
+        return
+    if not token or auth_token == "" or token != auth_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
 # API router
-app.include_router(api_router, prefix="/api")
+if auth_enabled:
+    app.include_router(api_router, prefix="/api", dependencies=[Security(api_key_header), Depends(api_auth_dependency)])
+else:
+    app.include_router(api_router, prefix="/api")
 
 # PyWebIO APP
 if config['Web']['PyWebIO_Enable']:

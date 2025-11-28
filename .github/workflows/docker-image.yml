@@ -3,28 +3,17 @@ name: Publish Docker image   # workflow名称，可以在Github项目主页的�
 
 on:   # 配置触发workflow的事件
   push:
-    branches:   # main分支有push时触发此workflow
-      - 'main'
+    # branches:   # main分支有push时触发此workflow
+    #   - 'main'
     tags:       # tag更新时触发此workflow
       - '*'
-  workflow_dispatch:
-          inputs:
-              name:
-                  description: 'Person to greet'
-                  required: true
-                  default: 'Mona the Octocat'
-              home:
-                  description: 'location'
-                  required: false
-                  default: 'The Octoverse'       
-      
 
 # 定义环境变量, 后面会使用
 # 定义 APP_NAME 用于 docker build-args
 # 定义 DOCKERHUB_REPO 标记 docker hub repo 名称
 env:
-  APP_NAME: douyin_tiktok_download_api
-  DOCKERHUB_REPO: evil0ctal/douyin_tiktok_download_api
+  APP_NAME: shortstream_aggregator_api
+  DOCKERHUB_REPO: qianlima233/shortstream_aggregator_api
 
 jobs:
   main:
@@ -33,16 +22,16 @@ jobs:
     steps:
       # git checkout 代码
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       # 设置 QEMU, 后面 docker buildx 依赖此.
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v3
       # 设置 Docker buildx, 方便构建 Multi platform 镜像
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v3
       # 登录 docker hub
       - name: Login to DockerHub
-        uses: docker/login-action@v1
+        uses: docker/login-action@v3
         with:
           # GitHub Repo => Settings => Secrets 增加 docker hub 登录密钥信息
           # DOCKERHUB_USERNAME 是 docker hub 账号名.
@@ -51,11 +40,11 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       # 通过 git 命令获取当前 tag 信息, 存入环境变量 APP_VERSION
       - name: Generate App Version
-        run: echo APP_VERSION=`git describe --tags --always` >> $GITHUB_ENV
+        run: echo "APP_VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
       # 构建 Docker 并推送到 Docker hub
       - name: Build and push
         id: docker_build
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v5
         with:
           # 是否 docker push
           push: true
@@ -63,6 +52,9 @@ jobs:
           platforms: |
             linux/amd64
             linux/arm64
+          # 使用 GitHub Actions 缓存加速构建
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           # docker build arg, 注入 APP_NAME/APP_VERSION
           build-args: |
             APP_NAME=${{ env.APP_NAME }}

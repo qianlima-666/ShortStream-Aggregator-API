@@ -68,8 +68,7 @@ def error_do(reason: str, value: str) -> None:
         "- 你可以尝试再次解析，或者尝试自行部署项目，然后替换`./app/crawlers/平台文件夹/config.yaml`中的`cookie`值。",
         "- You can try to parse again, or try to deploy the project by yourself, and then replace the `cookie` value in `./app/crawlers/platform folder/config.yaml`."))
 
-    put_markdown(
-        "- GitHub Issue: [Evil0ctal/Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API/issues)")
+    put_markdown(ViewsUtils.t('- 请联系部署者或站点维护者以获取支持。', '- Please contact the deployer or site maintainer for support.'))
     put_html("<hr>")
 
 

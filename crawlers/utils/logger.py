@@ -1,38 +1,3 @@
-# ==============================================================================
-# Copyright (C) 2021 Evil0ctal
-#
-# This file is part of the Douyin_TikTok_Download_API project.
-#
-# This project is licensed under the Apache License 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-# 　　　　 　　  ＿＿
-# 　　　 　　 ／＞　　フ
-# 　　　 　　| 　_　 _ l
-# 　 　　 　／` ミ＿xノ
-# 　　 　 /　　　 　 |       Feed me Stars ⭐ ️
-# 　　　 /　 ヽ　　 ﾉ
-# 　 　 │　　|　|　|
-# 　／￣|　　 |　|　|
-# 　| (￣ヽ＿_ヽ_)__)
-# 　＼二つ
-# ==============================================================================
-#
-# Contributor Link:
-# - https://github.com/Evil0ctal
-# - https://github.com/Johnserf-Seed
-#
-# ==============================================================================
-
-
 import threading
 import time
 import logging
@@ -79,10 +44,11 @@ class LogManager(metaclass=Singleton):
         if getattr(self, "_initialized", False):  # 防止重复初始化
             return
 
-        self.logger = logging.getLogger("Douyin_TikTok_Download_API_Crawlers")
+        self.logger = logging.getLogger("ShortStream-Aggregator-API")
         self.logger.setLevel(logging.INFO)
         self.log_dir = None
         self._initialized = True
+        self._mask_fields = ["Authorization", "Cookie", "X-API-Key"]
 
     def setup_logging(self, level=logging.INFO, log_to_console=False, log_path=None):
         self.logger.handlers.clear()
@@ -145,7 +111,7 @@ class LogManager(metaclass=Singleton):
 
 
 def log_setup(log_to_console=True):
-    logger = logging.getLogger("Douyin_TikTok_Download_API_Crawlers")
+    logger = logging.getLogger("ShortStream-Aggregator-API")
     if logger.hasHandlers():
         # logger已经被设置，不做任何操作
         return logger
