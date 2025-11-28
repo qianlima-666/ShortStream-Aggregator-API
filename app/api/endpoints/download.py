@@ -83,8 +83,13 @@ def _valid_filename(name: str) -> bool:
 def _is_allowed_download_url(platform: str, url: str) -> bool:
     try:
         from urllib.parse import urlparse
+        import socket
+        import ipaddress
         p = urlparse(url)
         if p.scheme != "https":
+            return False
+        # 仅允许标准端口
+        if p.port not in (None, 443):
             return False
         host = (p.hostname or "").lower().rstrip('.')
         allow = {
@@ -92,7 +97,25 @@ def _is_allowed_download_url(platform: str, url: str) -> bool:
             "tiktok": [".tiktok.com"],
             "bilibili": [".bilibili.com", ".bilivideo.com", ".hdslb.com"],
         }.get(platform, [])
-        return any(host == a.lstrip('.') or host.endswith(a) for a in allow)
+        if not any(host == a.lstrip('.') or host.endswith(a) for a in allow):
+            return False
+        # 解析DNS并拒绝私网/本地/保留等地址
+        try:
+            infos = socket.getaddrinfo(host, None)
+            addrs = {i[4][0] for i in infos if i and i[4]}
+            for addr in addrs:
+                ip_obj = ipaddress.ip_address(addr)
+                if (
+                    ip_obj.is_private
+                    or ip_obj.is_loopback
+                    or ip_obj.is_reserved
+                    or ip_obj.is_link_local
+                    or ip_obj.is_multicast
+                ):
+                    return False
+        except Exception:
+            return False
+        return True
     except Exception:
         return False
 
@@ -170,9 +193,9 @@ async def merge_bilibili_video_audio(
             audio_temp_path = audio_temp.name
 
         # 下载视频流
-        video_success = await fetch_data_stream(video_url, request, headers=headers, file_path=video_temp_path)
+        video_success = await fetch_data_stream(video_url, "bilibili", request, headers={"headers": headers}, file_path=video_temp_path)
         # 下载音频流
-        audio_success = await fetch_data_stream(audio_url, request, headers=headers, file_path=audio_temp_path)
+        audio_success = await fetch_data_stream(audio_url, "bilibili", request, headers={"headers": headers}, file_path=audio_temp_path)
 
         if not video_success or not audio_success:
             print("Failed to download video or audio stream")

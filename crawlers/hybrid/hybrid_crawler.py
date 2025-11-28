@@ -23,9 +23,27 @@ class HybridCrawler:
         # 如果是 b23.tv 短链，需要重定向获取真实URL
         if "b23.tv" in url:
             from urllib.parse import urlparse
+            import socket
+            import ipaddress
             p = urlparse(url)
-            if p.scheme != "https" or (p.hostname or "").lower() != "b23.tv":
+            if p.scheme != "https" or (p.hostname or "").lower() != "b23.tv" or p.port not in (None, 443):
                 raise ValueError("Invalid b23.tv short link")
+            # DNS 校验，拒绝私网/本地地址
+            try:
+                infos = socket.getaddrinfo(p.hostname, None)
+                addrs = {i[4][0] for i in infos if i and i[4]}
+                for addr in addrs:
+                    ip_obj = ipaddress.ip_address(addr)
+                    if (
+                        ip_obj.is_private
+                        or ip_obj.is_loopback
+                        or ip_obj.is_reserved
+                        or ip_obj.is_link_local
+                        or ip_obj.is_multicast
+                    ):
+                        raise ValueError("b23.tv resolves to a non-public IP")
+            except Exception:
+                raise ValueError("DNS resolution failed for b23.tv")
             async with httpx.AsyncClient() as client:
                 response = await client.head(url, follow_redirects=True)
                 url = str(response.url)

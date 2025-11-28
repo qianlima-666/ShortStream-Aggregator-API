@@ -333,8 +333,7 @@ class SecUserIdFetcher:
 
         if url is None:
             raise (APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__)))
-        parsed_url = urlparse(url)
-        if parsed_url.scheme != "https" or parsed_url.hostname not in {"v.douyin.com", "www.douyin.com"}:
+        if not is_allowed_douyin_web_url(url):
             raise APINotFoundError("输入的URL不合法（不是 Douyin 网页域名）。类名：{0}".format(cls.__name__))
 
         parsed_url = urlparse(url)
@@ -346,7 +345,12 @@ class SecUserIdFetcher:
                 response = await client.get(url, follow_redirects=True)
                 # 444一般为Nginx拦截，不返回状态 (444 is generally intercepted by Nginx and does not return status)
                 if response.status_code in {200, 444}:
-                    match = pattern.search(str(response.url))
+                    # 重定向后的URL仍需校验域名
+                    final = str(response.url)
+                    pf = urlparse(final)
+                    if (pf.hostname or "").lower() not in {"v.douyin.com", "www.douyin.com"}:
+                        raise APIResponseError("重定向目标不在允许域名范围内")
+                    match = pattern.search(final)
                     if match:
                         return match.group(1)
                     else:
@@ -423,13 +427,16 @@ class AwemeIdFetcher:
         transport = httpx.AsyncHTTPTransport(retries=5)
         async with httpx.AsyncClient(transport=transport, proxy=None, timeout=10) as client:
             try:
-                parsed = urlparse(url)
-                if parsed.scheme != "https" or (parsed.hostname or "").lower() not in {"v.douyin.com", "www.douyin.com"}:
+                if not is_allowed_douyin_web_url(url):
                     raise APINotFoundError("输入的URL不合法（不是 Douyin 网页域名）。类名：{0}".format(cls.__name__))
                 response = await client.get(url, follow_redirects=True)
                 response.raise_for_status()
 
                 response_url = str(response.url)
+                # 重定向后的URL仍需校验域名
+                pf = urlparse(response_url)
+                if (pf.hostname or "").lower() not in {"v.douyin.com", "www.douyin.com"}:
+                    raise APIResponseError("重定向目标不在允许域名范围内")
 
                 # 按顺序尝试匹配视频ID
                 for pattern in [
@@ -785,3 +792,35 @@ def json_2_lrc(data: Union[str, list, dict]) -> str:
     except TypeError as e:
         raise TypeError("歌词数据类型错误：{0}".format(e))
     return "\n".join(lrc_lines)
+def is_allowed_douyin_web_url(url: str) -> bool:
+    try:
+        from urllib.parse import urlparse
+        import socket
+        import ipaddress
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            return False
+        # 仅允许标准端口
+        if parsed.port not in (None, 443):
+            return False
+        host = (parsed.hostname or "").lower().rstrip('.')
+        if host not in {"v.douyin.com", "www.douyin.com"}:
+            return False
+        try:
+            infos = socket.getaddrinfo(host, None)
+            addrs = {i[4][0] for i in infos if i and i[4]}
+            for addr in addrs:
+                ip_obj = ipaddress.ip_address(addr)
+                if (
+                    ip_obj.is_private
+                    or ip_obj.is_loopback
+                    or ip_obj.is_reserved
+                    or ip_obj.is_link_local
+                    or ip_obj.is_multicast
+                ):
+                    return False
+        except Exception:
+            return False
+        return True
+    except Exception:
+        return False

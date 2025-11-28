@@ -268,9 +268,7 @@ class SecUserIdFetcher:
 
         if url is None:
             raise (APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__)))
-        from urllib.parse import urlparse
-        pu = urlparse(url)
-        if pu.scheme != "https" or (pu.hostname or "").lower() not in {"www.tiktok.com", "m.tiktok.com"}:
+        if not _is_allowed_tiktok_url(url, {"www.tiktok.com", "m.tiktok.com"}):
             raise APINotFoundError("输入的URL不合法（不是 TikTok 网页域名）。类名：{0}".format(cls.__name__))
 
         transport = httpx.AsyncHTTPTransport(retries=5)
@@ -279,6 +277,11 @@ class SecUserIdFetcher:
                 response = await client.get(url, follow_redirects=True)
                 # 444一般为Nginx拦截，不返回状态 (444 is generally intercepted by Nginx and does not return status)
                 if response.status_code in {200, 444}:
+                    # 校验重定向后的域名仍在允许集合
+                    from urllib.parse import urlparse as _up
+                    pf = _up(str(response.url))
+                    if (pf.hostname or "").lower() not in {"www.tiktok.com", "m.tiktok.com"}:
+                        raise APIResponseError("重定向目标不在允许域名范围内")
                     if cls._TIKTOK_NOTFOUND_PARREN.search(str(response.url)):
                         raise APINotFoundError(
                             "页面不可用，可能是由于区域限制（代理）造成的。类名: {0}".format(cls.__name__)
@@ -355,9 +358,7 @@ class SecUserIdFetcher:
 
         if url is None:
             raise (APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__)))
-        from urllib.parse import urlparse
-        pu = urlparse(url)
-        if pu.scheme != "https" or (pu.hostname or "").lower() not in {"www.tiktok.com", "m.tiktok.com"}:
+        if not _is_allowed_tiktok_url(url, {"www.tiktok.com", "m.tiktok.com"}):
             raise APINotFoundError("输入的URL不合法（不是 TikTok 网页域名）。类名：{0}".format(cls.__name__))
 
         transport = httpx.AsyncHTTPTransport(retries=5)
@@ -366,6 +367,11 @@ class SecUserIdFetcher:
                 response = await client.get(url, follow_redirects=True)
 
                 if response.status_code in {200, 444}:
+                    # 校验重定向后的域名仍在允许集合
+                    from urllib.parse import urlparse as _up
+                    pf = _up(str(response.url))
+                    if (pf.hostname or "").lower() not in {"www.tiktok.com", "m.tiktok.com"}:
+                        raise APIResponseError("重定向目标不在允许域名范围内")
                     if cls._TIKTOK_NOTFOUND_PARREN.search(str(response.url)):
                         raise APINotFoundError(
                             "页面不可用，可能是由于区域限制（代理）造成的。类名: {0}".format(cls.__name__)
@@ -467,13 +473,16 @@ class AwemeIdFetcher:
         transport = httpx.AsyncHTTPTransport(retries=10)
         async with httpx.AsyncClient(transport=transport, proxies=TokenManager.proxies, timeout=10) as client:
             try:
-                from urllib.parse import urlparse
-                pu = urlparse(url)
-                if pu.scheme != "https" or (pu.hostname or "").lower() not in {"vt.tiktok.com", "www.tiktok.com", "m.tiktok.com"}:
+                if not _is_allowed_tiktok_url(url, {"vt.tiktok.com", "www.tiktok.com", "m.tiktok.com"}):
                     raise APINotFoundError("输入的URL不合法（不是 TikTok 网页/短链域名）。类名：{0}".format(cls.__name__))
                 response = await client.get(url, follow_redirects=True)
 
                 if response.status_code in {200, 444}:
+                    # 校验重定向后的域名仍在允许集合
+                    from urllib.parse import urlparse as _up
+                    pf = _up(str(response.url))
+                    if (pf.hostname or "").lower() not in {"www.tiktok.com", "m.tiktok.com"}:
+                        raise APIResponseError("重定向目标不在允许域名范围内")
                     if cls._TIKTOK_NOTFOUND_PATTERN.search(str(response.url)):
                         raise APINotFoundError(
                             "页面不可用，可能是由于区域限制（代理）造成的。类名: {0}".format(cls.__name__)
@@ -662,3 +671,34 @@ def create_or_rename_user_folder(kwargs: dict, local_user_data: dict, current_ni
         user_path = rename_user_folder(user_path, current_nickname)
 
     return user_path
+def _is_allowed_tiktok_url(url: str, hosts: set[str]) -> bool:
+    try:
+        from urllib.parse import urlparse
+        import socket
+        import ipaddress
+        p = urlparse(url)
+        if p.scheme != "https":
+            return False
+        if p.port not in (None, 443):
+            return False
+        host = (p.hostname or "").lower().rstrip('.')
+        if host not in hosts:
+            return False
+        try:
+            infos = socket.getaddrinfo(host, None)
+            addrs = {i[4][0] for i in infos if i and i[4]}
+            for addr in addrs:
+                ip_obj = ipaddress.ip_address(addr)
+                if (
+                    ip_obj.is_private
+                    or ip_obj.is_loopback
+                    or ip_obj.is_reserved
+                    or ip_obj.is_link_local
+                    or ip_obj.is_multicast
+                ):
+                    return False
+        except Exception:
+            return False
+        return True
+    except Exception:
+        return False
