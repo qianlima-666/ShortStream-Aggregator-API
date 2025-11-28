@@ -53,6 +53,14 @@ API:
 
   # Security Configuration | 安全配置
   Security:
+    # 严格校验URL | Strictly validate URLs
+    # 协议与端口限制：仅允许 https ，只允许标准端口 443 ；URL 不得包含 username/password
+    # 域名白名单限制：目标域名必须在 config.yaml → API.AllowedDomains.download.{platform} 指定的后缀集合内
+    # DNS 公网解析要求：域名必须解析到公网 IP；解析到私网/保留/回环/链路本地/组播等将被拒绝
+    # 重定向链路校验：每一次重定向的目标 URL 都必须满足同样的白名单与解析要求；不安全重定向直接拒绝
+    # 依赖环境与代理：严格模式下 HTTP 客户端禁用环境代理（ trust_env=false ）；仅使用直连
+    # 流式下载预检：严格模式下 HTTP 客户端禁用环境代理（ trust_env=false ）；仅使用直连
+    # 返回与日志：接口返回“拒绝原因 + 域名”简洁信息；“如何在配置中处理”只打印到控制台/日志
     StrictValidation: true    # 是否严格验证URL | Strictly validate URLs
 
   # Allowed Domains Configuration | 允许的域名配置
