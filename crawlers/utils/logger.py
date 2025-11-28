@@ -1,11 +1,12 @@
+import datetime
+import json
+import logging
 import threading
 import time
-import logging
-import datetime
-
-from pathlib import Path
-from rich.logging import RichHandler
 from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
+
+from rich.logging import RichHandler
 
 
 class Singleton(type):
@@ -70,14 +71,8 @@ class LogManager(metaclass=Singleton):
             self.ensure_log_dir_exists(self.log_dir)
             log_file_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S.log")
             log_file = self.log_dir.joinpath(log_file_name)
-            fh = TimedRotatingFileHandler(
-                log_file, when="midnight", interval=1, backupCount=99, encoding="utf-8"
-            )
-            fh.setFormatter(
-                logging.Formatter(
-                    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-                )
-            )
+            fh = TimedRotatingFileHandler(log_file, when="midnight", interval=1, backupCount=99, encoding="utf-8")
+            fh.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
             self.logger.addHandler(fh)
 
     @staticmethod
@@ -98,9 +93,7 @@ class LogManager(metaclass=Singleton):
             try:
                 log_file.unlink()
             except PermissionError:
-                self.logger.warning(
-                    f"无法删除日志文件 {log_file}, 它正被另一个进程使用"
-                )
+                self.logger.warning(f"无法删除日志文件 {log_file}, 它正被另一个进程使用")
 
     def shutdown(self):
         for handler in self.logger.handlers:
@@ -122,9 +115,7 @@ def log_setup(log_to_console=True):
 
     # 初始化日志管理器
     log_manager = LogManager()
-    log_manager.setup_logging(
-        level=logging.INFO, log_to_console=log_to_console, log_path=temp_log_dir
-    )
+    log_manager.setup_logging(level=logging.INFO, log_to_console=log_to_console, log_path=temp_log_dir)
 
     # 只保留1000个日志文件
     log_manager.clean_logs(1000)
@@ -133,3 +124,10 @@ def log_setup(log_to_console=True):
 
 
 logger = log_setup()
+
+
+def log_metric(event: str, **fields):
+    try:
+        logger.info("METRIC %s %s", event, json.dumps(fields, ensure_ascii=False))
+    except Exception:
+        logger.info("METRIC %s %s", event, str(fields))

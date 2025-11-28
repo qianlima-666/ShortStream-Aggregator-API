@@ -1,6 +1,6 @@
 class BilibiliAPIEndpoints:
-
     "-------------------------------------------------------域名-domain-------------------------------------------------------"
+
     # 哔哩哔哩接口域名
     BILIAPI_DOMAIN = "https://api.bilibili.com"
 
@@ -58,5 +58,3 @@ class BilibiliAPIEndpoints:
 
     # 正在直播的主播
     LIVE_STREAMER = f"{LIVE_DOMAIN}/xlive/web-interface/v1/second/getList"
-
-

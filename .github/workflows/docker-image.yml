@@ -44,7 +44,7 @@ jobs:
       # 构建 Docker 并推送到 Docker hub
       - name: Build and push
         id: docker_build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           # 是否 docker push
           push: true

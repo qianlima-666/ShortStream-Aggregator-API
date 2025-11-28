@@ -14,7 +14,10 @@ document.addEventListener('DOMContentLoaded', function() {
         douyin: { name: 'douyin', displayName: '抖音', icon: '🎵' }
     };
     
-    // 加载Webhook配置
+    /**
+     * 加载存储中的 Webhook 配置
+     * @returns {void}
+     */
     function loadWebhookConfig() {
         chrome.storage.local.get(['webhookUrl'], function(result) {
             if (result.webhookUrl) {
@@ -24,7 +27,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // 保存Webhook配置
+    /**
+     * 保存 Webhook 配置到本地存储
+     * @returns {void}
+     */
     function saveWebhookConfig() {
         const url = webhookInput.value.trim();
         chrome.storage.local.set({ webhookUrl: url });
@@ -32,13 +38,20 @@ document.addEventListener('DOMContentLoaded', function() {
         updateTestButtonState();
     }
     
-    // 更新测试按钮状态
+    /**
+     * 根据 Webhook 地址更新测试按钮可用性
+     * @returns {void}
+     */
     function updateTestButtonState() {
         const url = webhookInput.value.trim();
         testWebhookBtn.disabled = !url || !isValidUrl(url);
     }
     
-    // 验证URL格式
+    /**
+     * 验证字符串是否为合法 URL
+     * @param {string} string - 待验证的字符串
+     * @returns {boolean} 是否合法
+     */
     function isValidUrl(string) {
         try {
             new URL(string);
@@ -48,7 +61,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // 测试Webhook回调
+    /**
+     * 发送 Webhook 测试请求
+     * @returns {Promise<void>}
+     */
     async function testWebhook() {
         const url = webhookInput.value.trim();
         if (!url) {
@@ -123,7 +139,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // 显示状态信息
+    /**
+     * 在界面展示短暂的状态信息
+     * @param {string} message - 状态文本
+     * @returns {void}
+     */
     function showStatusInfo(message) {
         statusInfo.textContent = message;
         statusInfo.style.display = 'block';
@@ -132,7 +152,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 3000);
     }
     
-    // 加载服务数据
+    /**
+     * 加载本地存储中的服务 Cookie 数据
+     * @returns {void}
+     */
     function loadServiceData() {
         const serviceKeys = Object.keys(SERVICES).map(service => `cookieData_${service}`);
         chrome.storage.local.get(serviceKeys, function(result) {
@@ -158,7 +181,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // 创建服务卡片
+    /**
+     * 创建服务数据展示卡片
+     * @param {{name:string,displayName:string,icon:string}} service - 服务配置
+     * @param {{lastUpdate:string,timestamp:number,cookie:string}} data - 数据对象
+     * @returns {void}
+     */
     function createServiceCard(service, data) {
         const card = document.createElement('div');
         card.className = 'service-card';
@@ -189,7 +217,11 @@ document.addEventListener('DOMContentLoaded', function() {
         serviceCards.appendChild(card);
     }
     
-    // 复制Cookie到剪贴板
+    /**
+     * 复制指定服务的 Cookie 到剪贴板
+     * @param {string} serviceName - 服务名称
+     * @returns {Promise<void>}
+     */
     async function copyCookie(serviceName) {
         chrome.storage.local.get([`cookieData_${serviceName}`], async function(result) {
             const data = result[`cookieData_${serviceName}`];
@@ -211,7 +243,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // 删除服务数据
+    /**
+     * 删除指定服务的存储数据
+     * @param {string} serviceName - 服务名称
+     * @returns {void}
+     */
     function deleteService(serviceName) {
         if (confirm(`确定要删除 ${SERVICES[serviceName].displayName} 的Cookie数据吗？`)) {
             chrome.storage.local.remove([
@@ -224,7 +260,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // 清空所有数据
+    /**
+     * 清空所有服务的 Cookie 数据
+     * @returns {void}
+     */
     function clearAllData() {
         if (confirm('确定要清空所有Cookie数据吗？')) {
             const keysToRemove = [];
@@ -240,7 +279,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // 导出数据
+    /**
+     * 导出所有服务的 Cookie 数据为 JSON 文件
+     * @returns {void}
+     */
     function exportData() {
         const serviceKeys = Object.keys(SERVICES).map(service => `cookieData_${service}`);
         chrome.storage.local.get(serviceKeys, function(result) {

@@ -11,7 +11,11 @@ const SERVICES = {
   }
 };
 
-// 获取服务名称
+/**
+ * 根据 URL 匹配服务配置
+ * @param {string} url - 当前请求的 URL
+ * @returns {{name:string,displayName:string,domains:string[],cookieDomain:string}|null} 匹配到的服务或 null
+ */
 function getServiceFromUrl(url) {
   for (const [key, service] of Object.entries(SERVICES)) {
     if (service.domains.some(domain => url.includes(domain))) {
@@ -21,7 +25,11 @@ function getServiceFromUrl(url) {
   return null;
 }
 
-// 检查是否在5分钟内抓取过
+/**
+ * 判断指定服务是否在 5 分钟内已抓取过
+ * @param {string} serviceName - 服务名称
+ * @returns {Promise<boolean>} 是否跳过抓取
+ */
 async function shouldSkipCapture(serviceName) {
   return new Promise((resolve) => {
     chrome.storage.local.get([`lastCapture_${serviceName}`], function(result) {
@@ -43,7 +51,12 @@ async function shouldSkipCapture(serviceName) {
   });
 }
 
-// 检查Cookie是否有变化
+/**
+ * 检查 Cookie 内容是否发生变化
+ * @param {string} serviceName - 服务名称
+ * @param {string} newCookie - 新的 Cookie 字符串
+ * @returns {Promise<boolean>} 是否发生变化
+ */
 async function isCookieChanged(serviceName, newCookie) {
   return new Promise((resolve) => {
     chrome.storage.local.get([`cookieData_${serviceName}`], function(result) {
@@ -58,7 +71,13 @@ async function isCookieChanged(serviceName, newCookie) {
   });
 }
 
-// 保存Cookie数据
+/**
+ * 保存 Cookie 数据并触发 Webhook
+ * @param {string} serviceName - 服务名称
+ * @param {string} url - 来源 URL
+ * @param {string} cookie - Cookie 字符串
+ * @param {('headers'|'cookies_api')} [source='headers'] - Cookie 来源
+ */
 async function saveCookieData(serviceName, url, cookie, source = 'headers') {
   const cookieData = {
     service: serviceName,
@@ -81,7 +100,11 @@ async function saveCookieData(serviceName, url, cookie, source = 'headers') {
   console.log(`${serviceName}: Cookie已保存`);
 }
 
-// Webhook回调
+/**
+ * 发送 Webhook 回调通知
+ * @param {string} serviceName - 服务名称
+ * @param {string} cookie - Cookie 字符串
+ */
 async function sendWebhook(serviceName, cookie) {
   chrome.storage.local.get(['webhookUrl'], function(result) {
     const webhookUrl = result.webhookUrl;

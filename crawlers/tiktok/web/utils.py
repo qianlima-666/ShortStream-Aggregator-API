@@ -1,27 +1,26 @@
+import asyncio
+import json
 import os
 import re
-import json
-import yaml
-import httpx
-import asyncio
-
-from typing import Union
 from pathlib import Path
+from typing import Union
 
-from crawlers.utils.logger import logger
+import httpx
+import yaml
+
 from crawlers.douyin.web.xbogus import XBogus as XB
-from crawlers.utils.utils import (
-    gen_random_str,
-    get_timestamp,
-    extract_valid_urls,
-    split_filename,
-)
 from crawlers.utils.api_exceptions import (
-    APIError,
     APIConnectionError,
+    APINotFoundError,
     APIResponseError,
     APIUnauthorizedError,
-    APINotFoundError,
+)
+from crawlers.utils.logger import logger
+from crawlers.utils.utils import (
+    extract_valid_urls,
+    gen_random_str,
+    get_timestamp,
+    split_filename,
 )
 
 # 配置文件路径
@@ -67,11 +66,20 @@ class TokenManager:
         }
 
         transport = httpx.HTTPTransport(retries=5)
-        with httpx.Client(transport=transport, proxies=cls.proxies) as client:
+        with httpx.Client(transport=transport, proxies=cls.proxies, trust_env=False) as client:
             try:
-                response = client.post(
-                    cls.token_conf["url"], headers=headers, content=payload
+                api_url = cls.token_conf["url"]
+                allowed_list = (
+                    config.get("API", {})
+                    .get("AllowedDomains", {})
+                    .get("tiktok_api", ["mssdk.tiktokw.us", "mssdk.bytedance.com"])
                 )
+                if not _is_allowed_tiktok_api_url(api_url, set(allowed_list)):
+                    logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）")
+                from urllib.parse import urlparse
+                p = urlparse(api_url)
+                safe_url = f"https://{(p.hostname or '').lower().rstrip('.')}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
+                response = client.post(safe_url, headers=headers, content=payload, follow_redirects=True)
                 response.raise_for_status()
 
                 msToken = str(httpx.Cookies(response.cookies).get("msToken"))
@@ -118,46 +126,59 @@ class TokenManager:
         生成请求必带的ttwid (Generate the essential ttwid for requests)
         """
         transport = httpx.HTTPTransport(retries=5)
-        with httpx.Client(transport=transport, proxies=cls.proxies) as client:
+        with httpx.Client(transport=transport, proxies=cls.proxies, trust_env=False) as client:
             try:
+                api_url = cls.ttwid_conf["url"]
+                allowed_list = (
+                    config.get("API", {})
+                    .get("AllowedDomains", {})
+                    .get("tiktok_api", ["www.tiktok.com"])
+                )
+                if not _is_allowed_tiktok_api_url(api_url, set(allowed_list)):
+                    logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）")
+                from urllib.parse import urlparse
+                p = urlparse(api_url)
+                safe_url = f"https://{(p.hostname or '').lower().rstrip('.')}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
                 response = client.post(
-                    cls.ttwid_conf["url"],
+                    safe_url,
                     content=cls.ttwid_conf["data"],
                     headers={
                         "Cookie": cookie,
                         "Content-Type": "text/plain",
                     },
+                    follow_redirects=True,
                 )
                 response.raise_for_status()
 
                 ttwid = httpx.Cookies(response.cookies).get("ttwid")
 
                 if ttwid is None:
-                    raise APIResponseError(
-                        "ttwid: 检查没有通过, 请更新配置文件中的ttwid"
-                    )
+                    raise APIResponseError("ttwid: 检查没有通过, 请更新配置文件中的ttwid")
 
                 return ttwid
 
             except httpx.RequestError as exc:
                 # 捕获所有与 httpx 请求相关的异常情况 (Captures all httpx request-related exceptions)
-                raise APIConnectionError("请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}"
-                                         .format(cls.ttwid_conf["url"], cls.proxies, cls.__name__, exc)
-                                         )
+                raise APIConnectionError(
+                    "请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}".format(
+                        cls.ttwid_conf["url"], cls.proxies, cls.__name__, exc
+                    )
+                )
 
             except httpx.HTTPStatusError as e:
                 # 捕获 httpx 的状态代码错误 (captures specific status code errors from httpx)
                 if response.status_code == 401:
-                    raise APIUnauthorizedError("参数验证失败，请更新 Douyin_TikTok_Download_API 配置文件中的 {0}，以匹配 {1} 新规则"
-                                               .format("ttwid", "tiktok")
-                                               )
+                    raise APIUnauthorizedError(
+                        "参数验证失败，请更新 Douyin_TikTok_Download_API 配置文件中的 {0}，以匹配 {1} 新规则".format(
+                            "ttwid", "tiktok"
+                        )
+                    )
 
                 elif response.status_code == 404:
                     raise APINotFoundError("{0} 无法找到API端点".format("ttwid"))
                 else:
-                    raise APIResponseError("链接：{0}，状态码 {1}：{2} ".format(
-                        e.response.url, e.response.status_code, e.response.text
-                    )
+                    raise APIResponseError(
+                        "链接：{0}，状态码 {1}：{2} ".format(e.response.url, e.response.status_code, e.response.text)
                     )
 
     @classmethod
@@ -166,9 +187,20 @@ class TokenManager:
         生成请求必带的odin_tt (Generate the essential odin_tt for requests)
         """
         transport = httpx.HTTPTransport(retries=5)
-        with httpx.Client(transport=transport, proxies=cls.proxies) as client:
+        with httpx.Client(transport=transport, proxies=cls.proxies, trust_env=False) as client:
             try:
-                response = client.get(cls.odin_tt_conf["url"])
+                api_url = cls.odin_tt_conf["url"]
+                allowed_list = (
+                    config.get("API", {})
+                    .get("AllowedDomains", {})
+                    .get("tiktok_api", ["www.tiktok.com"])
+                )
+                if not _is_allowed_tiktok_api_url(api_url, set(allowed_list)):
+                    logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）")
+                from urllib.parse import urlparse
+                p = urlparse(api_url)
+                safe_url = f"https://{(p.hostname or '').lower().rstrip('.')}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
+                response = client.get(safe_url, follow_redirects=True)
                 response.raise_for_status()
 
                 odin_tt = httpx.Cookies(response.cookies).get("odin_tt")
@@ -180,32 +212,35 @@ class TokenManager:
 
             except httpx.RequestError as exc:
                 # 捕获所有与 httpx 请求相关的异常情况 (Captures all httpx request-related exceptions)
-                raise APIConnectionError("请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}"
-                                         .format(cls.odin_tt_conf["url"], cls.proxies, cls.__name__, exc)
-                                         )
+                raise APIConnectionError(
+                    "请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}".format(
+                        cls.odin_tt_conf["url"], cls.proxies, cls.__name__, exc
+                    )
+                )
 
             except httpx.HTTPStatusError as e:
                 # 捕获 httpx 的状态代码错误 (captures specific status code errors from httpx)
                 if response.status_code == 401:
-                    raise APIUnauthorizedError("参数验证失败，请更新 Douyin_TikTok_Download_API 配置文件中的 {0}，以匹配 {1} 新规则"
-                                               .format("odin_tt", "tiktok")
-                                               )
+                    raise APIUnauthorizedError(
+                        "参数验证失败，请更新 Douyin_TikTok_Download_API 配置文件中的 {0}，以匹配 {1} 新规则".format(
+                            "odin_tt", "tiktok"
+                        )
+                    )
 
                 elif response.status_code == 404:
                     raise APINotFoundError("{0} 无法找到API端点".format("odin_tt"))
                 else:
-                    raise APIResponseError("链接：{0}，状态码 {1}：{2} ".format(
-                        e.response.url, e.response.status_code, e.response.text
-                    )
+                    raise APIResponseError(
+                        "链接：{0}，状态码 {1}：{2} ".format(e.response.url, e.response.status_code, e.response.text)
                     )
 
 
 class BogusManager:
     @classmethod
     def xb_str_2_endpoint(
-            cls,
-            user_agent: str,
-            endpoint: str,
+        cls,
+        user_agent: str,
+        endpoint: str,
     ) -> str:
         try:
             final_endpoint = XB(user_agent).getXBogus(endpoint)
@@ -216,10 +251,10 @@ class BogusManager:
 
     @classmethod
     def model_2_endpoint(
-            cls,
-            base_endpoint: str,
-            params: dict,
-            user_agent: str,
+        cls,
+        base_endpoint: str,
+        params: dict,
+        user_agent: str,
     ) -> str:
         # 检查params是否是一个字典 (Check if params is a dict)
         if not isinstance(params, dict):
@@ -266,28 +301,34 @@ class SecUserIdFetcher:
         url = extract_valid_urls(url)
 
         if url is None:
-            raise (
-                APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__))
-            )
+            raise (APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__)))
+        if not _is_allowed_tiktok_url(url, {"www.tiktok.com", "m.tiktok.com"}):
+            raise APINotFoundError("输入的URL不合法（不是 TikTok 网页域名）。类名：{0}".format(cls.__name__))
 
         transport = httpx.AsyncHTTPTransport(retries=5)
-        async with httpx.AsyncClient(
-                transport=transport, proxies=TokenManager.proxies, timeout=10
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, proxies=TokenManager.proxies, timeout=10, trust_env=False) as client:
             try:
-                response = await client.get(url, follow_redirects=True)
+                from urllib.parse import urlparse as _up
+                _p = _up(url)
+                safe_url = f"https://{(_p.hostname or '').lower().rstrip('.')}{_p.path or '/'}" + (f"?{_p.query}" if _p.query else "")
+                response = await client.get(safe_url, follow_redirects=True)
                 # 444一般为Nginx拦截，不返回状态 (444 is generally intercepted by Nginx and does not return status)
                 if response.status_code in {200, 444}:
+                    # 校验重定向后的域名仍在允许集合
+                    from urllib.parse import urlparse as _up
+                    pf = _up(str(response.url))
+                    if (pf.hostname or "").lower() not in {"www.tiktok.com", "m.tiktok.com"}:
+                        raise APIResponseError("重定向目标不在允许域名范围内")
                     if cls._TIKTOK_NOTFOUND_PARREN.search(str(response.url)):
-                        raise APINotFoundError("页面不可用，可能是由于区域限制（代理）造成的。类名: {0}"
-                                               .format(cls.__name__)
-                                               )
+                        raise APINotFoundError(
+                            "页面不可用，可能是由于区域限制（代理）造成的。类名: {0}".format(cls.__name__)
+                        )
 
                     match = cls._TIKTOK_SECUID_PARREN.search(str(response.text))
                     if not match:
-                        raise APIResponseError("未在响应中找到 {0}，检查链接是否为用户主页。类名: {1}"
-                                               .format("sec_uid", cls.__name__)
-                                               )
+                        raise APIResponseError(
+                            "未在响应中找到 {0}，检查链接是否为用户主页。类名: {1}".format("sec_uid", cls.__name__)
+                        )
 
                     # 提取SIGI_STATE对象中的sec_uid
                     data = json.loads(match.group(1))
@@ -297,9 +338,7 @@ class SecUserIdFetcher:
                     sec_uid = user_info.get("secUid")
 
                     if sec_uid is None:
-                        raise RuntimeError(
-                            "获取 {0} 失败，{1}".format(sec_uid, user_info)
-                        )
+                        raise RuntimeError("获取 {0} 失败，{1}".format(sec_uid, user_info))
 
                     return sec_uid
                 else:
@@ -307,9 +346,11 @@ class SecUserIdFetcher:
 
             except httpx.RequestError as exc:
                 # 捕获所有与 httpx 请求相关的异常情况 (Captures all httpx request-related exceptions)
-                raise APIConnectionError("请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}"
-                                         .format(url, TokenManager.proxies, cls.__name__, exc)
-                                         )
+                raise APIConnectionError(
+                    "请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}".format(
+                        url, TokenManager.proxies, cls.__name__, exc
+                    )
+                )
 
     @classmethod
     async def get_all_secuid(cls, urls: list) -> list:
@@ -330,11 +371,7 @@ class SecUserIdFetcher:
         urls = extract_valid_urls(urls)
 
         if urls == []:
-            raise (
-                APINotFoundError(
-                    "输入的URL List不合法。类名：{0}".format(cls.__name__)
-                )
-            )
+            raise (APINotFoundError("输入的URL List不合法。类名：{0}".format(cls.__name__)))
 
         secuids = [cls.get_secuid(url) for url in urls]
         return await asyncio.gather(*secuids)
@@ -357,46 +394,48 @@ class SecUserIdFetcher:
         url = extract_valid_urls(url)
 
         if url is None:
-            raise (
-                APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__))
-            )
+            raise (APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__)))
+        if not _is_allowed_tiktok_url(url, {"www.tiktok.com", "m.tiktok.com"}):
+            raise APINotFoundError("输入的URL不合法（不是 TikTok 网页域名）。类名：{0}".format(cls.__name__))
 
         transport = httpx.AsyncHTTPTransport(retries=5)
-        async with httpx.AsyncClient(
-                transport=transport, proxies=TokenManager.proxies, timeout=10
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, proxies=TokenManager.proxies, timeout=10, trust_env=False) as client:
             try:
-                response = await client.get(url, follow_redirects=True)
+                from urllib.parse import urlparse as _up
+                _p = _up(url)
+                safe_url = f"https://{(_p.hostname or '').lower().rstrip('.')}{_p.path or '/'}" + (f"?{_p.query}" if _p.query else "")
+                response = await client.get(safe_url, follow_redirects=True)
 
                 if response.status_code in {200, 444}:
+                    # 校验重定向后的域名仍在允许集合
+                    from urllib.parse import urlparse as _up
+                    pf = _up(str(response.url))
+                    if (pf.hostname or "").lower() not in {"www.tiktok.com", "m.tiktok.com"}:
+                        raise APIResponseError("重定向目标不在允许域名范围内")
                     if cls._TIKTOK_NOTFOUND_PARREN.search(str(response.url)):
-                        raise APINotFoundError("页面不可用，可能是由于区域限制（代理）造成的。类名: {0}"
-                                               .format(cls.__name__)
-                                               )
+                        raise APINotFoundError(
+                            "页面不可用，可能是由于区域限制（代理）造成的。类名: {0}".format(cls.__name__)
+                        )
 
                     match = cls._TIKTOK_UNIQUEID_PARREN.search(str(response.url))
                     if not match:
-                        raise APIResponseError(
-                            "未在响应中找到 {0}".format("unique_id")
-                        )
+                        raise APIResponseError("未在响应中找到 {0}".format("unique_id"))
 
                     unique_id = match.group(1)
 
                     if unique_id is None:
-                        raise RuntimeError(
-                            "获取 {0} 失败，{1}".format("unique_id", response.url)
-                        )
+                        raise RuntimeError("获取 {0} 失败，{1}".format("unique_id", response.url))
 
                     return unique_id
                 else:
-                    raise ConnectionError(
-                        "接口状态码异常 {0}, 请检查重试".format(response.status_code)
-                    )
+                    raise ConnectionError("接口状态码异常 {0}, 请检查重试".format(response.status_code))
 
             except httpx.RequestError:
-                raise APIConnectionError("连接端点失败，检查网络环境或代理：{0} 代理：{1} 类名：{2}"
-                                         .format(url, TokenManager.proxies, cls.__name__),
-                                         )
+                raise APIConnectionError(
+                    "连接端点失败，检查网络环境或代理：{0} 代理：{1} 类名：{2}".format(
+                        url, TokenManager.proxies, cls.__name__
+                    ),
+                )
 
     @classmethod
     async def get_all_uniqueid(cls, urls: list) -> list:
@@ -417,11 +456,7 @@ class SecUserIdFetcher:
         urls = extract_valid_urls(urls)
 
         if urls == []:
-            raise (
-                APINotFoundError(
-                    "输入的URL List不合法。类名：{0}".format(cls.__name__)
-                )
-            )
+            raise (APINotFoundError("输入的URL List不合法。类名：{0}".format(cls.__name__)))
 
         unique_ids = [cls.get_uniqueid(url) for url in urls]
         return await asyncio.gather(*unique_ids)
@@ -476,17 +511,25 @@ class AwemeIdFetcher:
         # 处理短连接的情况，根据重定向后的链接获取aweme_id
         print(f"输入的URL需要重定向: {url}")
         transport = httpx.AsyncHTTPTransport(retries=10)
-        async with httpx.AsyncClient(
-                transport=transport, proxies=TokenManager.proxies, timeout=10
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, proxies=TokenManager.proxies, timeout=10, trust_env=False) as client:
             try:
-                response = await client.get(url, follow_redirects=True)
+                if not _is_allowed_tiktok_url(url, {"vt.tiktok.com", "www.tiktok.com", "m.tiktok.com"}):
+                    raise APINotFoundError("输入的URL不合法（不是 TikTok 网页/短链域名）。类名：{0}".format(cls.__name__))
+                from urllib.parse import urlparse as _up
+                _p = _up(url)
+                safe_url = f"https://{(_p.hostname or '').lower().rstrip('.')}{_p.path or '/'}" + (f"?{_p.query}" if _p.query else "")
+                response = await client.get(safe_url, follow_redirects=True)
 
                 if response.status_code in {200, 444}:
+                    # 校验重定向后的域名仍在允许集合
+                    from urllib.parse import urlparse as _up
+                    pf = _up(str(response.url))
+                    if (pf.hostname or "").lower() not in {"www.tiktok.com", "m.tiktok.com"}:
+                        raise APIResponseError("重定向目标不在允许域名范围内")
                     if cls._TIKTOK_NOTFOUND_PATTERN.search(str(response.url)):
-                        raise APINotFoundError("页面不可用，可能是由于区域限制（代理）造成的。类名: {0}"
-                                               .format(cls.__name__)
-                                               )
+                        raise APINotFoundError(
+                            "页面不可用，可能是由于区域限制（代理）造成的。类名: {0}".format(cls.__name__)
+                        )
 
                     video_match = cls._TIKTOK_AWEMEID_PATTERN.search(str(response.url))
                     photo_match = cls._TIKTOK_PHOTOID_PATTERN.search(str(response.url))
@@ -505,9 +548,11 @@ class AwemeIdFetcher:
 
             except httpx.RequestError as exc:
                 # 捕获所有与 httpx 请求相关的异常情况
-                raise APIConnectionError("请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}"
-                                         .format(url, TokenManager.proxies, cls.__name__, exc)
-                                         )
+                raise APIConnectionError(
+                    "请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}".format(
+                        url, TokenManager.proxies, cls.__name__, exc
+                    )
+                )
 
     @classmethod
     async def get_all_aweme_id(cls, urls: list) -> list:
@@ -528,20 +573,16 @@ class AwemeIdFetcher:
         urls = extract_valid_urls(urls)
 
         if urls == []:
-            raise (
-                APINotFoundError(
-                    "输入的URL List不合法。类名：{0}".format(cls.__name__)
-                )
-            )
+            raise (APINotFoundError("输入的URL List不合法。类名：{0}".format(cls.__name__)))
 
         aweme_ids = [cls.get_aweme_id(url) for url in urls]
         return await asyncio.gather(*aweme_ids)
 
 
 def format_file_name(
-        naming_template: str,
-        aweme_data: dict = {},
-        custom_fields: dict = {},
+    naming_template: str,
+    aweme_data: dict = {},
+    custom_fields: dict = {},
 ) -> str:
     """
     根据配置文件的全局格式化文件名
@@ -620,9 +661,7 @@ def create_user_folder(kwargs: dict, nickname: Union[str, int]) -> Path:
     base_path = Path(kwargs.get("path", "Download"))
 
     # 添加下载模式和用户名
-    user_path = (
-            base_path / "tiktok" / kwargs.get("mode", "PLEASE_SETUP_MODE") / str(nickname)
-    )
+    user_path = base_path / "tiktok" / kwargs.get("mode", "PLEASE_SETUP_MODE") / str(nickname)
 
     # 获取绝对路径并确保它存在
     resolve_user_path = user_path.resolve()
@@ -653,9 +692,7 @@ def rename_user_folder(old_path: Path, new_nickname: str) -> Path:
     return new_path
 
 
-def create_or_rename_user_folder(
-        kwargs: dict, local_user_data: dict, current_nickname: str
-) -> Path:
+def create_or_rename_user_folder(kwargs: dict, local_user_data: dict, current_nickname: str) -> Path:
     """
     创建或重命名用户目录 (Create or rename user directory)
 
@@ -677,3 +714,74 @@ def create_or_rename_user_folder(
         user_path = rename_user_folder(user_path, current_nickname)
 
     return user_path
+def _is_allowed_tiktok_url(url: str, hosts: set[str]) -> bool:
+    try:
+        from urllib.parse import urlparse
+        import socket
+        import ipaddress
+        p = urlparse(url)
+        if p.scheme != "https":
+            return False
+        if p.port not in (None, 443):
+            return False
+        host = (p.hostname or "").lower().rstrip('.')
+        if host not in hosts:
+            return False
+        try:
+            infos = socket.getaddrinfo(host, None)
+            addrs = {i[4][0] for i in infos if i and i[4]}
+            for addr in addrs:
+                ip_obj = ipaddress.ip_address(addr)
+                if (
+                    ip_obj.is_private
+                    or ip_obj.is_loopback
+                    or ip_obj.is_reserved
+                    or ip_obj.is_link_local
+                    or ip_obj.is_multicast
+                ):
+                    return False
+        except Exception:
+            return False
+        return True
+    except Exception:
+        return False
+
+def _is_allowed_tiktok_api_url(url: str, hosts: set[str]) -> bool:
+    try:
+        from urllib.parse import urlparse
+        import socket
+        import ipaddress
+        sec = True
+        try:
+            sec = bool(config.get("API", {}).get("Security", {}).get("StrictValidation", True))
+        except Exception:
+            sec = True
+        p = urlparse(url)
+        if p.scheme != "https":
+            return False
+        if p.port not in (None, 443):
+            return False
+        host = (p.hostname or "").lower().rstrip('.')
+        if host not in hosts:
+            return False
+        try:
+            infos = socket.getaddrinfo(host, None)
+            addrs = {i[4][0] for i in infos if i and i[4]}
+            for addr in addrs:
+                ip_obj = ipaddress.ip_address(addr)
+                if (
+                    ip_obj.is_private
+                    or ip_obj.is_loopback
+                    or ip_obj.is_reserved
+                    or ip_obj.is_link_local
+                    or ip_obj.is_multicast
+                ):
+                    if not sec:
+                        return True
+                    return False
+            return True
+        except Exception:
+            # 在开发/离线环境可能无法解析DNS；只要域名在白名单内则允许
+            return True
+    except Exception:
+        return False

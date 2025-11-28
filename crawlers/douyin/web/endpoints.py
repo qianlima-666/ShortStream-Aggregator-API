@@ -149,4 +149,3 @@ class DouyinAPIEndpoints:
 
     # 抖音视频频道 (Douyin Video Channel)
     DOUYIN_VIDEO_CHANNEL = f"{DOUYIN_DOMAIN}/aweme/v1/web/channel/feed/"
-

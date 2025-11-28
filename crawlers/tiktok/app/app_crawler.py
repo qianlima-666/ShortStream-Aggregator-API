@@ -1,23 +1,21 @@
 import asyncio  # 异步I/O
-import time  # 时间操作
-import yaml  # 配置文件
 import os  # 系统操作
+import time  # 时间操作
+
+import yaml  # 配置文件
+
+# 重试机制
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 # 基础爬虫客户端和TikTokAPI端点
 from crawlers.base_crawler import BaseCrawler
 from crawlers.tiktok.app.endpoints import TikTokAPIEndpoints
-from crawlers.utils.utils import model_to_query_string
-
-# 重试机制
-from tenacity import *
 
 # TikTok接口数据请求模型
-from crawlers.tiktok.app.models import (
-    BaseRequestModel, FeedVideoDetail
-)
+from crawlers.tiktok.app.models import FeedVideoDetail
 
 # 标记已废弃的方法
-from crawlers.utils.deprecated import deprecated
+from crawlers.utils.utils import model_to_query_string
 
 # 配置文件路径
 path = os.path.abspath(os.path.dirname(__file__))
@@ -28,7 +26,6 @@ with open(f"{path}/config.yaml", "r", encoding="utf-8") as f:
 
 
 class TikTokAPPCrawler:
-
     # 从配置文件中获取TikTok的请求头
     async def get_tiktok_headers(self):
         tiktok_config = config["TokenManager"]["tiktok"]
@@ -38,8 +35,7 @@ class TikTokAPPCrawler:
                 "Referer": tiktok_config["headers"]["Referer"],
                 "Cookie": tiktok_config["headers"]["Cookie"],
             },
-            "proxies": {"http://": tiktok_config["proxies"]["http"],
-                        "https://": tiktok_config["proxies"]["https"]}
+            "proxies": {"http://": tiktok_config["proxies"]["http"], "https://": tiktok_config["proxies"]["https"]},
         }
         return kwargs
 

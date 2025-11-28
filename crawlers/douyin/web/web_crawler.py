@@ -1,28 +1,40 @@
 import asyncio  # 异步I/O
 import os  # 系统操作
 import time  # 时间操作
-from urllib.parse import urlencode, quote  # URL编码
+from urllib.parse import urlencode  # URL编码
+
 import yaml  # 配置文件
 
 # 基础爬虫客户端和抖音API端点
 from crawlers.base_crawler import BaseCrawler
 from crawlers.douyin.web.endpoints import DouyinAPIEndpoints
+
 # 抖音接口数据请求模型
 from crawlers.douyin.web.models import (
-    BaseRequestModel, LiveRoomRanking, PostComments,
-    PostCommentsReply, PostDetail,
-    UserProfile, UserCollection, UserLike, UserLive,
-    UserLive2, UserMix, UserPost
+    BaseRequestModel,
+    LiveRoomRanking,
+    PostComments,
+    PostCommentsReply,
+    PostDetail,
+    UserCollection,
+    UserLike,
+    UserLive,
+    UserLive2,
+    UserMix,
+    UserPost,
+    UserProfile,
 )
+
 # 抖音应用的工具类
-from crawlers.douyin.web.utils import (AwemeIdFetcher,  # Aweme ID获取
-                                       BogusManager,  # XBogus管理
-                                       SecUserIdFetcher,  # 安全用户ID获取
-                                       TokenManager,  # 令牌管理
-                                       VerifyFpManager,  # 验证管理
-                                       WebCastIdFetcher,  # 直播ID获取
-                                       extract_valid_urls  # URL提取
-                                       )
+from crawlers.douyin.web.utils import (  # Aweme ID获取
+    AwemeIdFetcher,
+    BogusManager,  # XBogus管理
+    SecUserIdFetcher,  # 安全用户ID获取
+    TokenManager,  # 令牌管理
+    VerifyFpManager,  # 验证管理
+    WebCastIdFetcher,  # 直播ID获取
+    extract_valid_urls,  # URL提取
+)
 
 # 配置文件路径
 path = os.path.abspath(os.path.dirname(__file__))
@@ -33,7 +45,6 @@ with open(f"{path}/config.yaml", "r", encoding="utf-8") as f:
 
 
 class DouyinWebCrawler:
-
     # 从配置文件中获取抖音的请求头
     async def get_douyin_headers(self):
         douyin_config = config["TokenManager"]["douyin"]
@@ -67,7 +78,7 @@ class DouyinWebCrawler:
 
             # 生成一个作品详情的带有a_bogus加密参数的Endpoint
             params_dict = params.dict()
-            params_dict["msToken"] = ''
+            params_dict["msToken"] = ""
             a_bogus = BogusManager.ab_model_2_endpoint(params_dict, kwargs["headers"]["User-Agent"])
             endpoint = f"{DouyinAPIEndpoints.POST_DETAIL}?{urlencode(params_dict)}&a_bogus={a_bogus}"
 
@@ -87,7 +98,7 @@ class DouyinWebCrawler:
 
             # 生成一个用户发布作品数据的带有a_bogus加密参数的Endpoint
             params_dict = params.dict()
-            params_dict["msToken"] = ''
+            params_dict["msToken"] = ""
             a_bogus = BogusManager.ab_model_2_endpoint(params_dict, kwargs["headers"]["User-Agent"])
             endpoint = f"{DouyinAPIEndpoints.USER_POST}?{urlencode(params_dict)}&a_bogus={a_bogus}"
 
@@ -106,7 +117,7 @@ class DouyinWebCrawler:
             # response = await crawler.fetch_get_json(endpoint)
 
             params_dict = params.dict()
-            params_dict["msToken"] = ''
+            params_dict["msToken"] = ""
             a_bogus = BogusManager.ab_model_2_endpoint(params_dict, kwargs["headers"]["User-Agent"])
             endpoint = f"{DouyinAPIEndpoints.USER_FAVORITE_A}?{urlencode(params_dict)}&a_bogus={a_bogus}"
 
@@ -225,41 +236,37 @@ class DouyinWebCrawler:
     "-------------------------------------------------------utils接口列表-------------------------------------------------------"
 
     # 生成真实msToken
-    async def gen_real_msToken(self, ):
-        result = {
-            "msToken": TokenManager().gen_real_msToken()
-        }
+    async def gen_real_msToken(
+        self,
+    ):
+        result = {"msToken": TokenManager().gen_real_msToken()}
         return result
 
     # 生成ttwid
-    async def gen_ttwid(self, ):
-        result = {
-            "ttwid": TokenManager().gen_ttwid()
-        }
+    async def gen_ttwid(
+        self,
+    ):
+        result = {"ttwid": TokenManager().gen_ttwid()}
         return result
 
     # 生成verify_fp
-    async def gen_verify_fp(self, ):
-        result = {
-            "verify_fp": VerifyFpManager.gen_verify_fp()
-        }
+    async def gen_verify_fp(
+        self,
+    ):
+        result = {"verify_fp": VerifyFpManager.gen_verify_fp()}
         return result
 
     # 生成s_v_web_id
-    async def gen_s_v_web_id(self, ):
-        result = {
-            "s_v_web_id": VerifyFpManager.gen_s_v_web_id()
-        }
+    async def gen_s_v_web_id(
+        self,
+    ):
+        result = {"s_v_web_id": VerifyFpManager.gen_s_v_web_id()}
         return result
 
     # 使用接口地址生成Xb参数
     async def get_x_bogus(self, url: str, user_agent: str):
         url = BogusManager.xb_str_2_endpoint(url, user_agent)
-        result = {
-            "url": url,
-            "x_bogus": url.split("&X-Bogus=")[1],
-            "user_agent": user_agent
-        }
+        result = {"url": url, "x_bogus": url.split("&X-Bogus=")[1], "user_agent": user_agent}
         return result
 
     # 使用接口地址生成Ab参数
@@ -273,7 +280,7 @@ class DouyinWebCrawler:
         result = {
             "url": f"{endpoint}?{urlencode(params)}&a_bogus={a_bogus}",
             "a_bogus": a_bogus,
-            "user_agent": user_agent
+            "user_agent": user_agent,
         }
         return result
 
@@ -316,21 +323,21 @@ class DouyinWebCrawler:
     async def update_cookie(self, cookie: str):
         """
         更新指定服务的Cookie
-        
+
         Args:
             service: 服务名称 (如: douyin_web)
             cookie: 新的Cookie值
         """
         global config
         service = "douyin"
-        print('DouyinWebCrawler before update', config["TokenManager"][service]["headers"]["Cookie"])
-        print('DouyinWebCrawler to update', cookie)
+        print("DouyinWebCrawler before update", config["TokenManager"][service]["headers"]["Cookie"])
+        print("DouyinWebCrawler to update", cookie)
         # 1. 更新内存中的配置（立即生效）
         config["TokenManager"][service]["headers"]["Cookie"] = cookie
-        print('DouyinWebCrawler cookie updated', config["TokenManager"][service]["headers"]["Cookie"])
+        print("DouyinWebCrawler cookie updated", config["TokenManager"][service]["headers"]["Cookie"])
         # 2. 写入配置文件（持久化）
         config_path = f"{path}/config.yaml"
-        with open(config_path, 'w', encoding='utf-8') as file:
+        with open(config_path, "w", encoding="utf-8") as file:
             yaml.dump(config, file, default_flow_style=False, allow_unicode=True, indent=2)
 
     async def main(self):

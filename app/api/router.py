@@ -1,10 +1,13 @@
 from fastapi import APIRouter
+
 from app.api.endpoints import (
-    tiktok_web,
-    tiktok_app,
-    douyin_web,
     bilibili_web,
-    hybrid_parsing, ios_shortcut, download,
+    douyin_web,
+    download,
+    hybrid_parsing,
+    ios_shortcut,
+    tiktok_app,
+    tiktok_web,
 )
 
 router = APIRouter()

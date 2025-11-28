@@ -1,27 +1,27 @@
 # Web
 Web:
-  # APP Switch
+  # APP Switch | APP开关
   PyWebIO_Enable: true    # Enable APP | 启用APP
 
-  # APP Information
+  # APP Information | APP信息
   Domain: https://example.com   # Web domain | Web域名
 
-  # APP Configuration
+  # APP Configuration | APP配置
   PyWebIO_Theme: minty    # PyWebIO theme | PyWebIO主题
   Max_Take_URLs: 30    # Maximum number of URLs that can be taken at a time | 一次最多可以取得的URL数量
 
 
-  # Web Information
+  # Web Information | Web信息
   Tab_Title: 短流聚合 API    # Web title | Web标题
   Description: 短流聚合 API（ShortStream Aggregator API）是一个免费的开源聚合服务，旨在为开发者提供简洁、快速、稳定的短视频解析与分发能力；本项目基于 Evil0ctal/Douyin_TikTok_Download_API 的提交 42784ffc83a72a516bfe952153ad7e2a3998d16c 进行开发。    # Web description | Web描述
   Favicon: /logo/logo192.png    # Web favicon | Web图标
 
-  # Fun Configuration
+  # Fun Configuration | 有趣的配置
   Easter_Egg: true    # Enable Easter Egg | 启用彩蛋
   Live2D_Enable: true
   Live2D_JS: https://fastly.jsdelivr.net/gh/TikHubIO/TikHub_live2d@latest/autoload.js
 
-  # Web Auth
+  # Web Auth | Web认证
   Auth:
     Enabled: true    # 启用前端登录认证
     Username: admin  # 前端登录用户名（请修改）
@@ -32,25 +32,66 @@ Web:
 
 # API
 API:
-  # Network Configuration
+  # Network Configuration | 网络配置
   Host_IP: 0.0.0.0    # default IP | 默认IP
-  Host_Port: 80    # default port is 80 | 默认端口为80
+  Host_Port: 3000    # default port is 3000 | 默认端口为3000
   Docs_URL: /docs    # API documentation URL | API文档URL
   Redoc_URL: /redoc    # API documentation URL | API文档URL
 
-  # API Information
+  # API Information | API信息
   Version: V4.2.0    # API version | API版本
   Update_Time: 2025/11/28    # API update time | API更新时间
   Environment: Demo    # API environment | API环境   （允许：Demo、Production、Dev）
 
-  # Download Configuration
+  # Download Configuration | 下载配置
   Download_Switch: true    # Enable download function | 启用下载功能
 
-  # File Configuration
+  # File Configuration | 文件配置
   Download_Path: "./download"    # Default download directory | 默认下载目录
   Download_File_Prefix: "SSA_"    # Default download file prefix | 默认下载文件前缀
 
-  # Auth Configuration
+
+  # Security Configuration | 安全配置
+  Security:
+    # 严格校验URL | Strictly validate URLs
+    # 协议与端口限制：仅允许 https ，只允许标准端口 443 ；URL 不得包含 username/password
+    # 域名白名单限制：目标域名必须在 config.yaml → API.AllowedDomains.download.{platform} 指定的后缀集合内
+    # DNS 公网解析要求：域名必须解析到公网 IP；解析到私网/保留/回环/链路本地/组播等将被拒绝
+    # 重定向链路校验：每一次重定向的目标 URL 都必须满足同样的白名单与解析要求；不安全重定向直接拒绝
+    # 依赖环境与代理：严格模式下 HTTP 客户端禁用环境代理（ trust_env=false ）；仅使用直连
+    # 流式下载预检：严格模式下 HTTP 客户端禁用环境代理（ trust_env=false ）；仅使用直连
+    # 返回与日志：接口返回“拒绝原因 + 域名”简洁信息；“如何在配置中处理”只打印到控制台/日志
+    StrictValidation: true    # 是否严格验证URL | Strictly validate URLs
+
+  # Allowed Domains Configuration | 允许的域名配置
+  AllowedDomains:
+    download:
+      douyin:
+        - .douyin.com
+        - .amemv.com
+        - .snssdk.com
+        - .douyinvod.com
+        - .douyinpic.com
+        - .pstatp.com
+        - .douyincdn.com
+        - .douyinstatic.com
+      tiktok:
+        - .tiktok.com
+        - .tiktokcdn.com
+        - .tiktokcdn-us.com
+      bilibili:
+        - .bilibili.com
+        - .bilivideo.com
+        - .hdslb.com
+    bytedance_api:
+      - mssdk.bytedance.com
+      - ttwid.bytedance.com
+    tiktok_api:
+      - mssdk.tiktokw.us
+      - mssdk.bytedance.com
+      - www.tiktok.com
+
+  # Auth Configuration | 认证配置
   Auth:
     Enabled: true    # 是否启用认证 | Enable authentication
     Mode: HeaderToken    # 认证模式：HeaderToken | Authentication mode
@@ -58,7 +99,7 @@ API:
     Token: "1234567890"    # 接口访问令牌 | API access token
 
 
-# iOS Shortcut
+# iOS Shortcut | iOS快捷指令
 iOS_Shortcut:
   iOS_Shortcut_Version: 7.0
   iOS_Shortcut_Update_Time: 2024/07/05

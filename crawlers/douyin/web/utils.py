@@ -4,34 +4,73 @@ import os
 import random
 import re
 import time
-import urllib
 from pathlib import Path
 from typing import Union
-from urllib.parse import urlencode, quote
+from urllib.parse import quote, urlparse
 
 # import execjs
 import httpx
 import qrcode
 import yaml
 
-from crawlers.douyin.web.xbogus import XBogus as XB
 from crawlers.douyin.web.abogus import ABogus as AB
-
+from crawlers.douyin.web.xbogus import XBogus as XB
 from crawlers.utils.api_exceptions import (
-    APIError,
     APIConnectionError,
-    APIResponseError,
-    APIUnavailableError,
-    APIUnauthorizedError,
     APINotFoundError,
+    APIResponseError,
+    APIUnauthorizedError,
+    APIUnavailableError,
 )
 from crawlers.utils.logger import logger
 from crawlers.utils.utils import (
+    extract_valid_urls,
     gen_random_str,
     get_timestamp,
-    extract_valid_urls,
     split_filename,
 )
+
+def is_allowed_douyin_live_url(url: str) -> bool:
+    """
+    检查输入 URL 是否属于允许的抖音直播域名，用于防止服务端请求伪造（SSRF）。
+
+    仅允许 `https` 且主机名为 `live.douyin.com` 或 `webcast.amemv.com` 的链接，并排除IP地址、私有/本地地址以防SSRF攻击。
+
+    Args:
+        url (str): 待校验的 URL
+
+    Returns:
+        bool: 当且仅当 URL 满足安全白名单策略时返回 True
+    """
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            return False
+        host = parsed.hostname
+        if not host:
+            return False
+        normalized_host = host.rstrip('.').lower()
+        allowed_hosts = {"live.douyin.com", "webcast.amemv.com"}
+        if normalized_host not in allowed_hosts:
+            return False
+        import socket
+        import ipaddress
+        try:
+            addr = socket.gethostbyname(normalized_host)
+            ip_obj = ipaddress.ip_address(addr)
+            if (
+                ip_obj.is_private
+                or ip_obj.is_loopback
+                or ip_obj.is_reserved
+                or ip_obj.is_link_local
+                or ip_obj.is_multicast
+            ):
+                return False
+        except Exception:
+            return False
+        return True
+    except Exception:
+        return False
 
 # 配置文件路径
 # Read the configuration file
@@ -74,11 +113,15 @@ class TokenManager:
         }
 
         transport = httpx.HTTPTransport(retries=5)
-        with httpx.Client(transport=transport, proxies=cls.proxies) as client:
+        with httpx.Client(transport=transport, proxies=cls.proxies, trust_env=False) as client:
             try:
-                response = client.post(
-                    cls.token_conf["url"], content=payload, headers=headers
-                )
+                api_url = cls.token_conf["url"]
+                if not is_allowed_bytedance_api_url(api_url):
+                    logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）")
+                from urllib.parse import urlparse
+                p = urlparse(api_url)
+                safe_url = f"https://{(p.hostname or '').lower().rstrip('.')}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
+                response = client.post(safe_url, content=payload, headers=headers, follow_redirects=True)
                 response.raise_for_status()
 
                 msToken = str(httpx.Cookies(response.cookies).get("msToken"))
@@ -130,11 +173,15 @@ class TokenManager:
         """
 
         transport = httpx.HTTPTransport(retries=5)
-        with httpx.Client(transport=transport) as client:
+        with httpx.Client(transport=transport, trust_env=False) as client:
             try:
-                response = client.post(
-                    cls.ttwid_conf["url"], content=cls.ttwid_conf["data"]
-                )
+                api_url = cls.ttwid_conf["url"]
+                if not is_allowed_bytedance_api_url(api_url):
+                    logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）")
+                from urllib.parse import urlparse
+                p = urlparse(api_url)
+                safe_url = f"https://{(p.hostname or '').lower().rstrip('.')}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
+                response = client.post(safe_url, content=cls.ttwid_conf["data"], follow_redirects=True)
                 response.raise_for_status()
 
                 ttwid = str(httpx.Cookies(response.cookies).get("ttwid"))
@@ -143,24 +190,25 @@ class TokenManager:
             except httpx.RequestError as exc:
                 # 捕获所有与 httpx 请求相关的异常情况 (Captures all httpx request-related exceptions)
                 raise APIConnectionError(
-                    "请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}"
-                    .format(cls.ttwid_conf["url"], cls.proxies, cls.__name__, exc)
+                    "请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}".format(
+                        cls.ttwid_conf["url"], cls.proxies, cls.__name__, exc
+                    )
                 )
 
             except httpx.HTTPStatusError as e:
                 # 捕获 httpx 的状态代码错误 (captures specific status code errors from httpx)
                 if e.response.status_code == 401:
                     raise APIUnauthorizedError(
-                        "参数验证失败，请更新 Douyin_TikTok_Download_API 配置文件中的 {0}，以匹配 {1} 新规则"
-                        .format("ttwid", "douyin")
+                        "参数验证失败，请更新 Douyin_TikTok_Download_API 配置文件中的 {0}，以匹配 {1} 新规则".format(
+                            "ttwid", "douyin"
+                        )
                     )
 
                 elif e.response.status_code == 404:
                     raise APINotFoundError("ttwid无法找到API端点")
                 else:
-                    raise APIResponseError("链接：{0}，状态码 {1}：{2} ".format(
-                        e.response.url, e.response.status_code, e.response.text
-                    )
+                    raise APIResponseError(
+                        "链接：{0}，状态码 {1}：{2} ".format(e.response.url, e.response.status_code, e.response.text)
                     )
 
 
@@ -201,7 +249,6 @@ class VerifyFpManager:
 
 
 class BogusManager:
-
     # 字符串方法生成X-Bogus参数
     @classmethod
     def xb_str_2_endpoint(cls, endpoint: str, user_agent: str) -> str:
@@ -264,11 +311,13 @@ class BogusManager:
             raise TypeError("参数必须是字典类型")
 
         try:
-            ab_value = AB().get_value(params, )
+            ab_value = AB().get_value(
+                params,
+            )
         except Exception as e:
             raise RuntimeError("生成A-Bogus失败: {0})".format(e))
 
-        return quote(ab_value, safe='')
+        return quote(ab_value, safe="")
 
 
 class SecUserIdFetcher:
@@ -295,52 +344,52 @@ class SecUserIdFetcher:
         url = extract_valid_urls(url)
 
         if url is None:
-            raise (
-                APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__))
-            )
+            raise (APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__)))
+        if not is_allowed_douyin_web_url(url):
+            raise APINotFoundError("输入的URL不合法（不是 Douyin 网页域名）。类名：{0}".format(cls.__name__))
 
-        pattern = (
-            cls._REDIRECT_URL_PATTERN
-            if "v.douyin.com" in url
-            else cls._DOUYIN_URL_PATTERN
-        )
+        parsed_url = urlparse(url)
+        pattern = cls._REDIRECT_URL_PATTERN if parsed_url.hostname == "v.douyin.com" else cls._DOUYIN_URL_PATTERN
 
         try:
             transport = httpx.AsyncHTTPTransport(retries=5)
-            async with httpx.AsyncClient(
-                    transport=transport, proxies=TokenManager.proxies, timeout=10
-            ) as client:
-                response = await client.get(url, follow_redirects=True)
+            async with httpx.AsyncClient(transport=transport, proxies=TokenManager.proxies, timeout=10, trust_env=False) as client:
+                from urllib.parse import urlparse as _up
+                _p = _up(url)
+                safe_url = f"https://{(_p.hostname or '').lower().rstrip('.')}{_p.path or '/'}" + (f"?{_p.query}" if _p.query else "")
+                response = await client.get(safe_url, follow_redirects=True)
                 # 444一般为Nginx拦截，不返回状态 (444 is generally intercepted by Nginx and does not return status)
                 if response.status_code in {200, 444}:
-                    match = pattern.search(str(response.url))
+                    # 重定向后的URL仍需校验域名
+                    final = str(response.url)
+                    pf = urlparse(final)
+                    if (pf.hostname or "").lower() not in {"v.douyin.com", "www.douyin.com"}:
+                        raise APIResponseError("重定向目标不在允许域名范围内")
+                    match = pattern.search(final)
                     if match:
                         return match.group(1)
                     else:
                         raise APIResponseError(
-                            "未在响应的地址中找到sec_user_id，检查链接是否为用户主页类名：{0}"
-                            .format(cls.__name__)
+                            "未在响应的地址中找到sec_user_id，检查链接是否为用户主页类名：{0}".format(cls.__name__)
                         )
 
                 elif response.status_code == 401:
-                    raise APIUnauthorizedError("未授权的请求。类名：{0}".format(cls.__name__)
-                                               )
+                    raise APIUnauthorizedError("未授权的请求。类名：{0}".format(cls.__name__))
                 elif response.status_code == 404:
-                    raise APINotFoundError("未找到API端点。类名：{0}".format(cls.__name__)
-                                           )
+                    raise APINotFoundError("未找到API端点。类名：{0}".format(cls.__name__))
                 elif response.status_code == 503:
-                    raise APIUnavailableError("API服务不可用。类名：{0}".format(cls.__name__)
-                                              )
+                    raise APIUnavailableError("API服务不可用。类名：{0}".format(cls.__name__))
                 else:
-                    raise APIResponseError("链接：{0}，状态码 {1}：{2} ".format(
-                        response.url, response.status_code, response.text
-                    )
+                    raise APIResponseError(
+                        "链接：{0}，状态码 {1}：{2} ".format(response.url, response.status_code, response.text)
                     )
 
         except httpx.RequestError as exc:
-            raise APIConnectionError("请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}"
-                                     .format(url, TokenManager.proxies, cls.__name__, exc)
-                                     )
+            raise APIConnectionError(
+                "请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}".format(
+                    url, TokenManager.proxies, cls.__name__, exc
+                )
+            )
 
     @classmethod
     async def get_all_sec_user_id(cls, urls: list) -> list:
@@ -361,10 +410,7 @@ class SecUserIdFetcher:
         urls = extract_valid_urls(urls)
 
         if urls == []:
-            raise (
-                APINotFoundError("输入的URL List不合法。类名：{0}".format(cls.__name__)
-                                 )
-            )
+            raise (APINotFoundError("输入的URL List不合法。类名：{0}".format(cls.__name__)))
 
         sec_user_ids = [cls.get_sec_user_id(url) for url in urls]
         return await asyncio.gather(*sec_user_ids)
@@ -394,21 +440,28 @@ class AwemeIdFetcher:
 
         # 重定向到完整链接
         transport = httpx.AsyncHTTPTransport(retries=5)
-        async with httpx.AsyncClient(
-                transport=transport, proxy=None, timeout=10
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, proxy=None, timeout=10, trust_env=False) as client:
             try:
-                response = await client.get(url, follow_redirects=True)
+                if not is_allowed_douyin_web_url(url):
+                    raise APINotFoundError("输入的URL不合法（不是 Douyin 网页域名）。类名：{0}".format(cls.__name__))
+                from urllib.parse import urlparse as _up
+                _p = _up(url)
+                safe_url = f"https://{(_p.hostname or '').lower().rstrip('.')}{_p.path or '/'}" + (f"?{_p.query}" if _p.query else "")
+                response = await client.get(safe_url, follow_redirects=True)
                 response.raise_for_status()
 
                 response_url = str(response.url)
+                # 重定向后的URL仍需校验域名
+                pf = urlparse(response_url)
+                if (pf.hostname or "").lower() not in {"v.douyin.com", "www.douyin.com"}:
+                    raise APIResponseError("重定向目标不在允许域名范围内")
 
                 # 按顺序尝试匹配视频ID
                 for pattern in [
                     cls._DOUYIN_VIDEO_URL_PATTERN,
                     cls._DOUYIN_VIDEO_URL_PATTERN_NEW,
                     cls._DOUYIN_NOTE_URL_PATTERN,
-                    cls._DOUYIN_DISCOVER_URL_PATTERN
+                    cls._DOUYIN_DISCOVER_URL_PATTERN,
                 ]:
                     match = pattern.search(response_url)
                     if match:
@@ -422,9 +475,7 @@ class AwemeIdFetcher:
                 )
 
             except httpx.HTTPStatusError as e:
-                raise APIResponseError(
-                    f"链接：{e.response.url}，状态码 {e.response.status_code}：{e.response.text}"
-                )
+                raise APIResponseError(f"链接：{e.response.url}，状态码 {e.response.status_code}：{e.response.text}")
 
     @classmethod
     async def get_all_aweme_id(cls, urls: list) -> list:
@@ -445,10 +496,7 @@ class AwemeIdFetcher:
         urls = extract_valid_urls(urls)
 
         if urls == []:
-            raise (
-                APINotFoundError("输入的URL List不合法。类名：{0}".format(cls.__name__)
-                                 )
-            )
+            raise (APINotFoundError("输入的URL List不合法。类名：{0}".format(cls.__name__)))
 
         aweme_ids = [cls.get_aweme_id(url) for url in urls]
         return await asyncio.gather(*aweme_ids)
@@ -488,49 +536,66 @@ class WebCastIdFetcher:
         # 提取有效URL
         url = extract_valid_urls(url)
 
-        if url is None:
-            raise (
-                APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__))
-            )
+        if url is None or not is_allowed_douyin_live_url(url):
+            raise (APINotFoundError("输入的URL不合法（不是 Douyin 直播域名）。类名：{0}".format(cls.__name__)))
+        # 仅从白名单域名中提取 room_id，并使用安全的 live.douyin.com 固定格式发起请求
+        parsed = urlparse(url)
+        safe_url = None
+        room_id = None
+        if parsed.hostname == "live.douyin.com":
+            m = re.match(r"^https://live\.douyin\.com/(\d+)", url)
+            if not m:
+                raise APINotFoundError("输入的URL不合法（不是有效 Douyin 直播间链接且无法提取room_id）。类名：{0}".format(cls.__name__))
+            room_id = m.group(1)
+        elif parsed.hostname == "webcast.amemv.com":
+            m = cls._DOUYIN_LIVE_URL_PATTERN3.search(url)
+            if not m:
+                q = re.search(r"[?&](roomId|liveId)=(\d+)", url)
+                if q:
+                    room_id = q.group(2)
+            else:
+                room_id = m.group(1)
+            if not room_id:
+                raise APINotFoundError("输入的URL不合法（无法从 reflow/ 或参数中提取 room_id）。类名：{0}".format(cls.__name__))
+        else:
+            raise APINotFoundError("输入的URL不合法（不支持的 Douyin 直播域名）。类名：{0}".format(cls.__name__))
+
+        safe_url = f"https://live.douyin.com/{room_id}"
         try:
             # 重定向到完整链接
             transport = httpx.AsyncHTTPTransport(retries=5)
-            async with httpx.AsyncClient(
-                    transport=transport, proxies=TokenManager.proxies, timeout=10
-            ) as client:
-                response = await client.get(url, follow_redirects=True)
+            async with httpx.AsyncClient(transport=transport, proxies=TokenManager.proxies, timeout=10) as client:
+                response = await client.get(safe_url, follow_redirects=True)
                 response.raise_for_status()
-                url = str(response.url)
+                final_url = str(response.url)
 
                 live_pattern = cls._DOUYIN_LIVE_URL_PATTERN
                 live_pattern2 = cls._DOUYIN_LIVE_URL_PATTERN2
                 live_pattern3 = cls._DOUYIN_LIVE_URL_PATTERN3
 
-                if live_pattern.search(url):
-                    match = live_pattern.search(url)
-                elif live_pattern2.search(url):
-                    match = live_pattern2.search(url)
-                elif live_pattern3.search(url):
-                    match = live_pattern3.search(url)
-                    logger.warning("该链接返回的是room_id，请使用`fetch_user_live_videos_by_room_id`接口"
-
-                                   )
+                if live_pattern.search(final_url):
+                    match = live_pattern.search(final_url)
+                elif live_pattern2.search(final_url):
+                    match = live_pattern2.search(final_url)
+                elif live_pattern3.search(final_url):
+                    match = live_pattern3.search(final_url)
+                    logger.warning("该链接返回的是room_id，请使用`fetch_user_live_videos_by_room_id`接口")
                 else:
-                    raise APIResponseError("未在响应的地址中找到webcast_id，检查链接是否为直播页"
-                                           )
+                    raise APIResponseError("未在响应的地址中找到webcast_id，检查链接是否为直播页")
 
                 return match.group(1)
 
         except httpx.RequestError as exc:
             # 捕获所有与 httpx 请求相关的异常情况 (Captures all httpx request-related exceptions)
-            raise APIConnectionError("请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}"
-                                     .format(url, TokenManager.proxies, cls.__name__, exc)
-                                     )
+            raise APIConnectionError(
+                "请求端点失败，请检查当前网络环境。 链接：{0}，代理：{1}，异常类名：{2}，异常详细信息：{3}".format(
+                    safe_url, TokenManager.proxies, cls.__name__, exc
+                )
+            )
 
         except httpx.HTTPStatusError as e:
-            raise APIResponseError("链接：{0}，状态码 {1}：{2} ".format(
-                e.response.url, e.response.status_code, e.response.text
-            )
+            raise APIResponseError(
+                "链接：{0}，状态码 {1}：{2} ".format(e.response.url, e.response.status_code, e.response.text)
             )
 
     @classmethod
@@ -552,19 +617,16 @@ class WebCastIdFetcher:
         urls = extract_valid_urls(urls)
 
         if urls == []:
-            raise (
-                APINotFoundError("输入的URL List不合法。类名：{0}".format(cls.__name__)
-                                 )
-            )
+            raise (APINotFoundError("输入的URL List不合法。类名：{0}".format(cls.__name__)))
 
         webcast_ids = [cls.get_webcast_id(url) for url in urls]
         return await asyncio.gather(*webcast_ids)
 
 
 def format_file_name(
-        naming_template: str,
-        aweme_data: dict = {},
-        custom_fields: dict = {},
+    naming_template: str,
+    aweme_data: dict = {},
+    custom_fields: dict = {},
 ) -> str:
     """
     根据配置文件的全局格式化文件名
@@ -643,9 +705,7 @@ def create_user_folder(kwargs: dict, nickname: Union[str, int]) -> Path:
     base_path = Path(kwargs.get("path", "Download"))
 
     # 添加下载模式和用户名
-    user_path = (
-            base_path / "douyin" / kwargs.get("mode", "PLEASE_SETUP_MODE") / str(nickname)
-    )
+    user_path = base_path / "douyin" / kwargs.get("mode", "PLEASE_SETUP_MODE") / str(nickname)
 
     # 获取绝对路径并确保它存在
     resolve_user_path = user_path.resolve()
@@ -676,9 +736,7 @@ def rename_user_folder(old_path: Path, new_nickname: str) -> Path:
     return new_path
 
 
-def create_or_rename_user_folder(
-        kwargs: dict, local_user_data: dict, current_nickname: str
-) -> Path:
+def create_or_rename_user_folder(kwargs: dict, local_user_data: dict, current_nickname: str) -> Path:
     """
     创建或重命名用户目录 (Create or rename user directory)
 
@@ -752,3 +810,82 @@ def json_2_lrc(data: Union[str, list, dict]) -> str:
     except TypeError as e:
         raise TypeError("歌词数据类型错误：{0}".format(e))
     return "\n".join(lrc_lines)
+def is_allowed_douyin_web_url(url: str) -> bool:
+    try:
+        from urllib.parse import urlparse
+        import socket
+        import ipaddress
+        sec = True
+        try:
+            sec = bool(config.get("API", {}).get("Security", {}).get("StrictValidation", True))
+        except Exception:
+            sec = True
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            return False
+        # 仅允许标准端口
+        if parsed.port not in (None, 443):
+            return False
+        host = (parsed.hostname or "").lower().rstrip('.')
+        if host not in {"v.douyin.com", "www.douyin.com"}:
+            return False
+        try:
+            infos = socket.getaddrinfo(host, None)
+            addrs = {i[4][0] for i in infos if i and i[4]}
+            for addr in addrs:
+                ip_obj = ipaddress.ip_address(addr)
+                if (
+                    ip_obj.is_private
+                    or ip_obj.is_loopback
+                    or ip_obj.is_reserved
+                    or ip_obj.is_link_local
+                    or ip_obj.is_multicast
+                ):
+                    if not sec:
+                        return True
+                    return False
+        except Exception:
+            # 开发/离线环境无法解析DNS时，白名单域名仍视为合法
+            return True
+        return True
+    except Exception:
+        return False
+
+def is_allowed_bytedance_api_url(url: str) -> bool:
+    try:
+        from urllib.parse import urlparse
+        import socket
+        import ipaddress
+        p = urlparse(url)
+        if p.scheme != "https":
+            return False
+        if p.port not in (None, 443):
+            return False
+        host = (p.hostname or "").lower().rstrip('.')
+        allowed_list = (
+            config.get("API", {})
+            .get("AllowedDomains", {})
+            .get("bytedance_api", ["mssdk.bytedance.com", "ttwid.bytedance.com"])
+        )
+        allowed = set(allowed_list)
+        if host not in allowed:
+            return False
+        try:
+            infos = socket.getaddrinfo(host, None)
+            addrs = {i[4][0] for i in infos if i and i[4]}
+            for addr in addrs:
+                ip_obj = ipaddress.ip_address(addr)
+                if (
+                    ip_obj.is_private
+                    or ip_obj.is_loopback
+                    or ip_obj.is_reserved
+                    or ip_obj.is_link_local
+                    or ip_obj.is_multicast
+                ):
+                    return False
+            return True
+        except Exception:
+            # 在开发/离线环境可能无法解析DNS；只要域名在白名单内则允许
+            return True
+    except Exception:
+        return False

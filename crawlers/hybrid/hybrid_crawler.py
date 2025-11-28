@@ -1,11 +1,12 @@
 import asyncio
 import re
+
 import httpx
 
-from crawlers.douyin.web.web_crawler import DouyinWebCrawler  # 导入抖音Web爬虫
-from crawlers.tiktok.web.web_crawler import TikTokWebCrawler  # 导入TikTok Web爬虫
-from crawlers.tiktok.app.app_crawler import TikTokAPPCrawler  # 导入TikTok App爬虫
 from crawlers.bilibili.web.web_crawler import BilibiliWebCrawler  # 导入Bilibili Web爬虫
+from crawlers.douyin.web.web_crawler import DouyinWebCrawler  # 导入抖音Web爬虫
+from crawlers.tiktok.app.app_crawler import TikTokAPPCrawler  # 导入TikTok App爬虫
+from crawlers.tiktok.web.web_crawler import TikTokWebCrawler  # 导入TikTok Web爬虫
 
 
 class HybridCrawler:
@@ -21,12 +22,37 @@ class HybridCrawler:
         """
         # 如果是 b23.tv 短链，需要重定向获取真实URL
         if "b23.tv" in url:
-            async with httpx.AsyncClient() as client:
-                response = await client.head(url, follow_redirects=True)
+            from urllib.parse import urlparse
+            import socket
+            import ipaddress
+            p = urlparse(url)
+            if p.scheme != "https" or (p.hostname or "").lower() != "b23.tv" or p.port not in (None, 443):
+                raise ValueError("Invalid b23.tv short link")
+            # DNS 校验，拒绝私网/本地地址
+            try:
+                infos = socket.getaddrinfo(p.hostname, None)
+                addrs = {i[4][0] for i in infos if i and i[4]}
+                for addr in addrs:
+                    ip_obj = ipaddress.ip_address(addr)
+                    if (
+                        ip_obj.is_private
+                        or ip_obj.is_loopback
+                        or ip_obj.is_reserved
+                        or ip_obj.is_link_local
+                        or ip_obj.is_multicast
+                    ):
+                        raise ValueError("b23.tv resolves to a non-public IP")
+            except Exception:
+                raise ValueError("DNS resolution failed for b23.tv")
+            from urllib.parse import urlparse as _up
+            _p = _up(url)
+            safe_url = f"https://{(_p.hostname or '').lower().rstrip('.')}{_p.path or '/'}" + (f"?{_p.query}" if _p.query else "")
+            async with httpx.AsyncClient(trust_env=False) as client:
+                response = await client.head(safe_url, follow_redirects=True)
                 url = str(response.url)
-        
+
         # 从URL中提取BV号
-        bv_pattern = r'(?:video\/|\/)(BV[A-Za-z0-9]+)'
+        bv_pattern = r"(?:video\/|\/)(BV[A-Za-z0-9]+)"
         match = re.search(bv_pattern, url)
         if match:
             return match.group(1)
@@ -59,7 +85,7 @@ class HybridCrawler:
             platform = "bilibili"
             aweme_id = await self.get_bilibili_bv_id(url)  # BV号作为统一的video_id
             response = await self.BilibiliWebCrawler.fetch_one_video(aweme_id)
-            data = response.get('data', {})  # 提取data部分
+            data = response.get("data", {})  # 提取data部分
             # Bilibili只有视频类型，aweme_type设为0(video)
             aweme_type = 0
         else:
@@ -72,194 +98,186 @@ class HybridCrawler:
         # 如果是最小数据，处理数据/If it is minimal data, process the data
         url_type_code_dict = {
             # common
-            0: 'video',
+            0: "video",
             # Douyin
-            2: 'image',
-            4: 'video',
-            68: 'image',
+            2: "image",
+            4: "video",
+            68: "image",
             # TikTok
-            51: 'video',
-            55: 'video',
-            58: 'video',
-            61: 'video',
-            150: 'image'
+            51: "video",
+            55: "video",
+            58: "video",
+            61: "video",
+            150: "image",
         }
         # 判断链接类型/Judge link type
-        url_type = url_type_code_dict.get(aweme_type, 'video')
+        url_type = url_type_code_dict.get(aweme_type, "video")
         # print(f"url_type: {url_type}")
 
         """
         以下为(视频||图片)数据处理的四个方法,如果你需要自定义数据处理请在这里修改.
-        The following are four methods of (video || image) data processing. 
+        The following are four methods of (video || image) data processing.
         If you need to customize data processing, please modify it here.
         """
 
         """
         创建已知数据字典(索引相同)，稍后使用.update()方法更新数据
-        Create a known data dictionary (index the same), 
+        Create a known data dictionary (index the same),
         and then use the .update() method to update the data
         """
 
         # 根据平台适配字段映射
-        if platform == 'bilibili':
+        if platform == "bilibili":
             result_data = {
-                'type': url_type,
-                'platform': platform,
-                'video_id': aweme_id,
-                'desc': data.get("title"),  # Bilibili使用title
-                'create_time': data.get("pubdate"),  # Bilibili使用pubdate
-                'author': data.get("owner"),  # Bilibili使用owner
-                'music': None,  # Bilibili没有音乐信息
-                'statistics': data.get("stat"),  # Bilibili使用stat
-                'cover_data': {},  # 将在各平台处理中填充
-                'hashtags': None,  # Bilibili没有hashtags概念
+                "type": url_type,
+                "platform": platform,
+                "video_id": aweme_id,
+                "desc": data.get("title"),  # Bilibili使用title
+                "create_time": data.get("pubdate"),  # Bilibili使用pubdate
+                "author": data.get("owner"),  # Bilibili使用owner
+                "music": None,  # Bilibili没有音乐信息
+                "statistics": data.get("stat"),  # Bilibili使用stat
+                "cover_data": {},  # 将在各平台处理中填充
+                "hashtags": None,  # Bilibili没有hashtags概念
             }
         else:
             result_data = {
-                'type': url_type,
-                'platform': platform,
-                'video_id': aweme_id,  # 统一使用video_id字段，内容可能是aweme_id或bv_id
-                'desc': data.get("desc"),
-                'create_time': data.get("create_time"),
-                'author': data.get("author"),
-                'music': data.get("music"),
-                'statistics': data.get("statistics"),
-                'cover_data': {},  # 将在各平台处理中填充
-                'hashtags': data.get('text_extra'),
+                "type": url_type,
+                "platform": platform,
+                "video_id": aweme_id,  # 统一使用video_id字段，内容可能是aweme_id或bv_id
+                "desc": data.get("desc"),
+                "create_time": data.get("create_time"),
+                "author": data.get("author"),
+                "music": data.get("music"),
+                "statistics": data.get("statistics"),
+                "cover_data": {},  # 将在各平台处理中填充
+                "hashtags": data.get("text_extra"),
             }
         # 创建一个空变量，稍后使用.update()方法更新数据/Create an empty variable and use the .update() method to update the data
         api_data = None
         # 判断链接类型并处理数据/Judge link type and process data
         # 抖音数据处理/Douyin data processing
-        if platform == 'douyin':
+        if platform == "douyin":
             # 填充封面数据
-            result_data['cover_data'] = {
-                'cover': data.get("video", {}).get("cover"),
-                'origin_cover': data.get("video", {}).get("origin_cover"),
-                'dynamic_cover': data.get("video", {}).get("dynamic_cover")
+            result_data["cover_data"] = {
+                "cover": data.get("video", {}).get("cover"),
+                "origin_cover": data.get("video", {}).get("origin_cover"),
+                "dynamic_cover": data.get("video", {}).get("dynamic_cover"),
             }
             # 抖音视频数据处理/Douyin video data processing
-            if url_type == 'video':
+            if url_type == "video":
                 # 将信息储存在字典中/Store information in a dictionary
-                uri = data['video']['play_addr']['uri']
-                wm_video_url_HQ = data['video']['play_addr']['url_list'][0]
+                uri = data["video"]["play_addr"]["uri"]
+                wm_video_url_HQ = data["video"]["play_addr"]["url_list"][0]
                 wm_video_url = f"https://aweme.snssdk.com/aweme/v1/playwm/?video_id={uri}&radio=1080p&line=0"
-                nwm_video_url_HQ = wm_video_url_HQ.replace('playwm', 'play')
+                nwm_video_url_HQ = wm_video_url_HQ.replace("playwm", "play")
                 nwm_video_url = f"https://aweme.snssdk.com/aweme/v1/play/?video_id={uri}&ratio=1080p&line=0"
                 api_data = {
-                    'video_data':
-                        {
-                            'wm_video_url': wm_video_url,
-                            'wm_video_url_HQ': wm_video_url_HQ,
-                            'nwm_video_url': nwm_video_url,
-                            'nwm_video_url_HQ': nwm_video_url_HQ
-                        }
+                    "video_data": {
+                        "wm_video_url": wm_video_url,
+                        "wm_video_url_HQ": wm_video_url_HQ,
+                        "nwm_video_url": nwm_video_url,
+                        "nwm_video_url_HQ": nwm_video_url_HQ,
+                    }
                 }
             # 抖音图片数据处理/Douyin image data processing
-            elif url_type == 'image':
+            elif url_type == "image":
                 # 无水印图片列表/No watermark image list
                 no_watermark_image_list = []
                 # 有水印图片列表/With watermark image list
                 watermark_image_list = []
                 # 遍历图片列表/Traverse image list
-                for i in data['images']:
-                    no_watermark_image_list.append(i['url_list'][0])
-                    watermark_image_list.append(i['download_url_list'][0])
+                for i in data["images"]:
+                    no_watermark_image_list.append(i["url_list"][0])
+                    watermark_image_list.append(i["download_url_list"][0])
                 api_data = {
-                    'image_data':
-                        {
-                            'no_watermark_image_list': no_watermark_image_list,
-                            'watermark_image_list': watermark_image_list
-                        }
+                    "image_data": {
+                        "no_watermark_image_list": no_watermark_image_list,
+                        "watermark_image_list": watermark_image_list,
+                    }
                 }
         # TikTok数据处理/TikTok data processing
-        elif platform == 'tiktok':
+        elif platform == "tiktok":
             # 填充封面数据
-            result_data['cover_data'] = {
-                'cover': data.get("video", {}).get("cover"),
-                'origin_cover': data.get("video", {}).get("origin_cover"),
-                'dynamic_cover': data.get("video", {}).get("dynamic_cover")
+            result_data["cover_data"] = {
+                "cover": data.get("video", {}).get("cover"),
+                "origin_cover": data.get("video", {}).get("origin_cover"),
+                "dynamic_cover": data.get("video", {}).get("dynamic_cover"),
             }
             # TikTok视频数据处理/TikTok video data processing
-            if url_type == 'video':
+            if url_type == "video":
                 # 将信息储存在字典中/Store information in a dictionary
                 # wm_video = data['video']['downloadAddr']
                 # wm_video = data['video']['download_addr']['url_list'][0]
-                wm_video = (
-                    data.get('video', {})
-                    .get('download_addr', {})
-                    .get('url_list', [None])[0]
-                )
+                wm_video = data.get("video", {}).get("download_addr", {}).get("url_list", [None])[0]
 
                 api_data = {
-                    'video_data':
-                        {
-                            'wm_video_url': wm_video,
-                            'wm_video_url_HQ': wm_video,
-                            # 'nwm_video_url': data['video']['playAddr'],
-                            'nwm_video_url': data['video']['play_addr']['url_list'][0],
-                            # 'nwm_video_url_HQ': data['video']['bitrateInfo'][0]['PlayAddr']['UrlList'][0]
-                            'nwm_video_url_HQ': data['video']['bit_rate'][0]['play_addr']['url_list'][0]
-                        }
+                    "video_data": {
+                        "wm_video_url": wm_video,
+                        "wm_video_url_HQ": wm_video,
+                        # 'nwm_video_url': data['video']['playAddr'],
+                        "nwm_video_url": data["video"]["play_addr"]["url_list"][0],
+                        # 'nwm_video_url_HQ': data['video']['bitrateInfo'][0]['PlayAddr']['UrlList'][0]
+                        "nwm_video_url_HQ": data["video"]["bit_rate"][0]["play_addr"]["url_list"][0],
+                    }
                 }
             # TikTok图片数据处理/TikTok image data processing
-            elif url_type == 'image':
+            elif url_type == "image":
                 # 无水印图片列表/No watermark image list
                 no_watermark_image_list = []
                 # 有水印图片列表/With watermark image list
                 watermark_image_list = []
-                for i in data['image_post_info']['images']:
-                    no_watermark_image_list.append(i['display_image']['url_list'][0])
-                    watermark_image_list.append(i['owner_watermark_image']['url_list'][0])
+                for i in data["image_post_info"]["images"]:
+                    no_watermark_image_list.append(i["display_image"]["url_list"][0])
+                    watermark_image_list.append(i["owner_watermark_image"]["url_list"][0])
                 api_data = {
-                    'image_data':
-                        {
-                            'no_watermark_image_list': no_watermark_image_list,
-                            'watermark_image_list': watermark_image_list
-                        }
+                    "image_data": {
+                        "no_watermark_image_list": no_watermark_image_list,
+                        "watermark_image_list": watermark_image_list,
+                    }
                 }
         # Bilibili数据处理/Bilibili data processing
-        elif platform == 'bilibili':
+        elif platform == "bilibili":
             # 填充封面数据
-            result_data['cover_data'] = {
-                'cover': data.get("pic"),  # Bilibili使用pic作为封面
-                'origin_cover': data.get("pic"),
-                'dynamic_cover': data.get("pic")
+            result_data["cover_data"] = {
+                "cover": data.get("pic"),  # Bilibili使用pic作为封面
+                "origin_cover": data.get("pic"),
+                "dynamic_cover": data.get("pic"),
             }
             # Bilibili只有视频，直接处理视频数据
-            if url_type == 'video':
+            if url_type == "video":
                 # 获取视频播放地址需要额外调用API
-                cid = data.get('cid')  # 获取cid
+                cid = data.get("cid")  # 获取cid
                 if cid:
                     # 获取播放链接，cid需要转换为字符串
                     playurl_data = await self.BilibiliWebCrawler.fetch_video_playurl(aweme_id, str(cid))
                     # 从播放数据中提取URL
-                    dash = playurl_data.get('data', {}).get('dash', {})
-                    video_list = dash.get('video', [])
-                    audio_list = dash.get('audio', [])
-                    
+                    dash = playurl_data.get("data", {}).get("dash", {})
+                    video_list = dash.get("video", [])
+                    audio_list = dash.get("audio", [])
+
                     # 选择最高质量的视频流
-                    video_url = video_list[0].get('baseUrl') if video_list else None
-                    audio_url = audio_list[0].get('baseUrl') if audio_list else None
-                    
+                    video_url = video_list[0].get("baseUrl") if video_list else None
+                    audio_url = audio_list[0].get("baseUrl") if audio_list else None
+
                     api_data = {
-                        'video_data': {
-                            'wm_video_url': video_url,
-                            'wm_video_url_HQ': video_url,
-                            'nwm_video_url': video_url,  # Bilibili没有水印概念
-                            'nwm_video_url_HQ': video_url,
-                            'audio_url': audio_url,  # Bilibili音视频分离
-                            'cid': cid,  # 保存cid供后续使用
+                        "video_data": {
+                            "wm_video_url": video_url,
+                            "wm_video_url_HQ": video_url,
+                            "nwm_video_url": video_url,  # Bilibili没有水印概念
+                            "nwm_video_url_HQ": video_url,
+                            "audio_url": audio_url,  # Bilibili音视频分离
+                            "cid": cid,  # 保存cid供后续使用
                         }
                     }
                 else:
                     api_data = {
-                        'video_data': {
-                            'wm_video_url': None,
-                            'wm_video_url_HQ': None,
-                            'nwm_video_url': None,
-                            'nwm_video_url_HQ': None,
-                            'error': 'Failed to get cid for video playback'
+                        "video_data": {
+                            "wm_video_url": None,
+                            "wm_video_url_HQ": None,
+                            "nwm_video_url": None,
+                            "nwm_video_url_HQ": None,
+                            "error": "Failed to get cid for video playback",
                         }
                     }
         # 更新数据/Update data
@@ -280,7 +298,7 @@ class HybridCrawler:
         pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 实例化混合爬虫/Instantiate hybrid crawler
     hybird_crawler = HybridCrawler()
     # 运行测试代码/Run test code
