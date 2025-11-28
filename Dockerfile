@@ -37,7 +37,7 @@ RUN python -m compileall -b /app \
     && find /app -type f -name "*.py" ! -name "start.py" -delete
 
 # 设置容器启动命令
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD wget -qO- http://127.0.0.1:3000/docs || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD wget -qO- http://127.0.0.1:3000/health || exit 1
 CMD ["./start.sh"]
 
 # 暴露容器端口

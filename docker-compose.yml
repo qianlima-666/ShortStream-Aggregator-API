@@ -2,10 +2,12 @@ version: "3.9"  # Docker Compose 文件版本
 
 services:  # 定义服务列表
   shortstream_aggregator_api:  # 服务名称
-    image: qianlima233/shortstream_aggregator_api  # 使用的 Docker 镜像
+    image: qianlima233/shortstream_aggregator_api:latest  # 使用的 Docker 镜像
     network_mode: host  # 使用主机网络模式
     container_name: shortstream_aggregator_api  # 容器名称
     restart: always  # 容器退出后总是重启
+    ports:
+      - "3000:3000"
     volumes: # 挂载卷配置
       - ./config/config.yaml:/app/config.yaml
       - ./config/bilibili_web.yaml:/app/crawlers/bilibili/web/config.yaml
@@ -17,11 +19,8 @@ services:  # 定义服务列表
       - ./logs:/app/logs
     environment:  # 环境变量配置
       TZ: Asia/Shanghai  # 设置时区为亚洲/上海
-      PUID: 1026  # 设置容器内部的用户 ID
-      PGID: 100  # 设置容器内部的用户组 ID
-    privileged: true  # 设置特权模式以便容器内部可以执行特权操作
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/docs || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

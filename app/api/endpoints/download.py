@@ -26,6 +26,17 @@ config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.pa
 with open(config_path, 'r', encoding='utf-8') as file:
     config = yaml.safe_load(file)
 
+def _norm_path(p: str) -> str:
+    return os.path.abspath(os.path.normpath(p))
+
+def _is_under(root: str, p: str) -> bool:
+    try:
+        root_n = _norm_path(root)
+        p_n = _norm_path(p)
+        return os.path.commonpath([root_n, p_n]) == root_n
+    except Exception:
+        return False
+
 async def fetch_data(url: str, headers: dict = None):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -49,13 +60,18 @@ async def fetch_data_stream(url: str, request:Request , headers: dict = None, fi
             response.raise_for_status()
 
             # 流式保存文件
+            root_path = _norm_path(config.get("API").get("Download_Path"))
+            file_path = _norm_path(file_path)
+            if not _is_under(root_path, file_path):
+                return False
             async with aiofiles.open(file_path, 'wb') as out_file:
                 try:
                     async for chunk in response.aiter_bytes(chunk_size=65536):
                         if await request.is_disconnected():
                             await out_file.close()
                             try:
-                                os.remove(file_path)
+                                if _is_under(root_path, file_path):
+                                    os.remove(file_path)
                             except:
                                 pass
                             return False
@@ -66,7 +82,8 @@ async def fetch_data_stream(url: str, request:Request , headers: dict = None, fi
                     except:
                         pass
                     try:
-                        os.remove(file_path)
+                        if _is_under(root_path, file_path):
+                            os.remove(file_path)
                     except:
                         pass
                     return False
@@ -193,12 +210,18 @@ async def download_file_hybrid(request: Request,
     try:
         data_type = data.get('type')
         platform = data.get('platform')
+        if data_type not in {'video','image'}:
+            raise HTTPException(status_code=400, detail="Invalid data type")
+        allowed_platforms = {'douyin','tiktok','bilibili'}
+        if platform not in allowed_platforms:
+            raise HTTPException(status_code=400, detail="Invalid platform specified")
         video_id = data.get('video_id')
         safe_id = re.sub(r"[^A-Za-z0-9_\-]", "_", str(video_id))
-        file_prefix = config.get("API").get("Download_File_Prefix") if prefix else ''
-        root_path = os.path.abspath(config.get("API").get("Download_Path"))
-        download_path = os.path.abspath(os.path.join(root_path, f"{platform}_{data_type}"))
-        if not download_path.startswith(root_path):
+        file_prefix = re.sub(r"[^A-Za-z0-9_\-]", "_", str(config.get("API").get("Download_File_Prefix"))) if prefix else ''
+        root_path = _norm_path(config.get("API").get("Download_Path"))
+        download_subdir = f"{platform}_{data_type}"
+        download_path = _norm_path(os.path.join(root_path, download_subdir))
+        if not _is_under(root_path, download_path):
             raise HTTPException(status_code=400, detail="Invalid download path")
 
         # 确保目录存在/Ensure the directory exists
@@ -206,8 +229,11 @@ async def download_file_hybrid(request: Request,
 
         # 下载视频文件/Download video file
         if data_type == 'video':
-            file_name = f"{file_prefix}{platform}_{safe_id}.mp4" if not with_watermark else f"{file_prefix}{platform}_{safe_id}_watermark.mp4"
-            file_path = os.path.join(download_path, file_name)
+            raw_name = f"{file_prefix}{platform}_{safe_id}.mp4" if not with_watermark else f"{file_prefix}{platform}_{safe_id}_watermark.mp4"
+            file_name = re.sub(r"[^A-Za-z0-9_\-\.]", "_", raw_name)
+            file_path = _norm_path(os.path.join(download_path, file_name))
+            if not _is_under(root_path, file_path):
+                raise HTTPException(status_code=400, detail="Invalid file path")
 
             # 判断文件是否存在，存在就直接返回
             if os.path.exists(file_path):
@@ -282,8 +308,11 @@ async def download_file_hybrid(request: Request,
         # 下载图片文件/Download image file
         elif data_type == 'image':
             # 压缩文件属性/Compress file properties
-            zip_file_name = f"{file_prefix}{platform}_{safe_id}_images.zip" if not with_watermark else f"{file_prefix}{platform}_{safe_id}_images_watermark.zip"
-            zip_file_path = os.path.join(download_path, zip_file_name)
+            raw_zip = f"{file_prefix}{platform}_{safe_id}_images.zip" if not with_watermark else f"{file_prefix}{platform}_{safe_id}_images_watermark.zip"
+            zip_file_name = re.sub(r"[^A-Za-z0-9_\-\.]", "_", raw_zip)
+            zip_file_path = _norm_path(os.path.join(download_path, zip_file_name))
+            if not _is_under(root_path, zip_file_path):
+                raise HTTPException(status_code=400, detail="Invalid file path")
 
             # 判断文件是否存在，存在就直接返回、
             if os.path.exists(zip_file_path):
@@ -299,8 +328,11 @@ async def download_file_hybrid(request: Request,
                 index = int(urls.index(url))
                 content_type = response.headers.get('content-type')
                 file_format = content_type.split('/')[1]
-                file_name = f"{file_prefix}{platform}_{safe_id}_{index + 1}.{file_format}" if not with_watermark else f"{file_prefix}{platform}_{safe_id}_{index + 1}_watermark.{file_format}"
-                file_path = os.path.join(download_path, file_name)
+                raw_img = f"{file_prefix}{platform}_{safe_id}_{index + 1}.{file_format}" if not with_watermark else f"{file_prefix}{platform}_{safe_id}_{index + 1}_watermark.{file_format}"
+                file_name = re.sub(r"[^A-Za-z0-9_\-\.]", "_", raw_img)
+                file_path = _norm_path(os.path.join(download_path, file_name))
+                if not _is_under(root_path, file_path):
+                    raise HTTPException(status_code=400, detail="Invalid file path")
                 image_file_list.append(file_path)
 
                 # 保存文件/Save file

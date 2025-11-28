@@ -100,6 +100,16 @@ app = FastAPI(
     redoc_url=redoc_url,  # redoc文档路径
 )
 
+@app.get("/health", summary="健康检查", tags=["Health"])
+async def health():
+    """
+    @description 健康检查端点，返回应用运行状态与版本信息
+    @returns {object} { status: "ok", version: string, time: string }
+    """
+    import datetime
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    return {"status": "ok", "version": version, "time": now_utc.isoformat().replace("+00:00", "Z")}
+
 # 速率限制（并发限制）
 rate_cfg = config.get('API', {}).get('Rate_Limit', {})
 max_concurrent = int(rate_cfg.get('Max_Concurrent', 100))
