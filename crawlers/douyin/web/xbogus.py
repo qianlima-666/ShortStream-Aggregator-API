@@ -1,6 +1,6 @@
-import time
 import base64
 import hashlib
+import time
 
 
 class XBogus:
@@ -34,10 +34,7 @@ class XBogus:
             array = []
             idx = 0
             while idx < len(md5_str):
-                array.append(
-                    (self.Array[ord(md5_str[idx])] << 4)
-                    | self.Array[ord(md5_str[idx + 1])]
-                )
+                array.append((self.Array[ord(md5_str[idx])] << 4) | self.Array[ord(md5_str[idx + 1])])
                 idx += 2
             return array
 
@@ -46,9 +43,7 @@ class XBogus:
         使用多轮md5哈希算法对URL路径进行加密。
         Encrypt the URL path using multiple rounds of md5 hashing.
         """
-        hashed_url_path = self.md5_str_to_array(
-            self.md5(self.md5_str_to_array(self.md5(url_path)))
-        )
+        hashed_url_path = self.md5_str_to_array(self.md5(self.md5_str_to_array(self.md5(url_path))))
         return hashed_url_path
 
     def md5(self, input_data):
@@ -67,9 +62,7 @@ class XBogus:
         md5_hash.update(bytes(array))
         return md5_hash.hexdigest()
 
-    def encoding_conversion(
-        self, a, b, c, e, d, t, f, r, n, o, i, _, x, u, s, l, v, h, p
-    ):
+    def encoding_conversion(self, a, b, c, e, d, t, f, r, n, o, i, _, x, u, s, l, v, h, p):
         """
         第一次编码转换。
         Perform encoding conversion.
@@ -137,15 +130,13 @@ class XBogus:
 
         array1 = self.md5_str_to_array(
             self.md5(
-                base64.b64encode(
-                    self.rc4_encrypt(self.ua_key, self.user_agent.encode("ISO-8859-1"))
-                ).decode("ISO-8859-1")
+                base64.b64encode(self.rc4_encrypt(self.ua_key, self.user_agent.encode("ISO-8859-1"))).decode(
+                    "ISO-8859-1"
+                )
             )
         )
 
-        array2 = self.md5_str_to_array(
-            self.md5(self.md5_str_to_array("d41d8cd98f00b204e9800998ecf8427e"))
-        )
+        array2 = self.md5_str_to_array(self.md5(self.md5_str_to_array("d41d8cd98f00b204e9800998ecf8427e")))
         url_path_array = self.md5_encrypt(url_path)
 
         timer = int(time.time())

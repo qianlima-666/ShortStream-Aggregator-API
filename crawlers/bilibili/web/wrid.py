@@ -1,7 +1,9 @@
 import urllib.parse
 
+
 def srotl(t, e):
     return (t << e) | (t >> (32 - e))
+
 
 def tendian(t):
     if isinstance(t, int):
@@ -9,6 +11,7 @@ def tendian(t):
     for e in range(len(t)):
         t[e] = tendian(t[e])
     return t
+
 
 # 没问题
 def tbytes_to_words(t):
@@ -21,15 +24,18 @@ def tbytes_to_words(t):
         r += 8
     return e
 
+
 def jbinstring_to_bytes(t):
     e = []
     for n in range(len(t)):
         e.append(ord(t[n]) & 255)
     return e
 
+
 # 没问题
 def estring_to_bytes(t):
     return jbinstring_to_bytes(urllib.parse.unquote(urllib.parse.quote(t)))
+
 
 def _ff(t, e, n, r, o, i, a):
     # 计算中间值 c
@@ -41,6 +47,7 @@ def _ff(t, e, n, r, o, i, a):
     # 返回结果
     return (c + e) & 0xFFFFFFFF
 
+
 def _gg(t, e, n, r, o, i, a):
     # 计算中间值 c
     c = t + ((e & r) | (n & ~r)) + (o & 0xFFFFFFFF) + a
@@ -50,6 +57,7 @@ def _gg(t, e, n, r, o, i, a):
     c = (c << i | c >> (32 - i)) & 0xFFFFFFFF
     # 返回结果
     return (c + e) & 0xFFFFFFFF
+
 
 def _hh(t, e, n, r, o, i, a):
     # 计算中间值 c
@@ -61,6 +69,7 @@ def _hh(t, e, n, r, o, i, a):
     # 返回结果
     return (c + e) & 0xFFFFFFFF
 
+
 def _ii(t, e, n, r, o, i, a):
     # 计算中间值 c
     c = t + (n ^ (e | ~r)) + (o & 0xFFFFFFFF) + a
@@ -70,6 +79,7 @@ def _ii(t, e, n, r, o, i, a):
     c = (c << i | c >> (32 - i)) & 0xFFFFFFFF
     # 返回结果
     return (c + e) & 0xFFFFFFFF
+
 
 def o(i, a):
     if isinstance(i, str):
@@ -167,18 +177,21 @@ def o(i, a):
 
     return tendian([s, l, f, p])
 
+
 def twords_to_bytes(t):
     e = []
     for n in range(0, 32 * len(t), 8):
         e.append((t[n >> 5] >> (24 - n % 32)) & 255)
     return e
 
+
 def tbytes_to_hex(t):
     e = []
     for n in range(len(t)):
         e.append(hex(t[n] >> 4)[2:])
         e.append(hex(t[n] & 15)[2:])
-    return ''.join(e)
+    return "".join(e)
+
 
 def get_wrid(e):
     n = None

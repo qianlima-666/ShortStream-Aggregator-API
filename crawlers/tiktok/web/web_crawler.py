@@ -1,36 +1,31 @@
 import asyncio  # 异步I/O
-import time  # 时间操作
-import yaml  # 配置文件
 import os  # 系统操作
+import time  # 时间操作
+
+import yaml  # 配置文件
 
 # 基础爬虫客户端和TikTokAPI端点
 from crawlers.base_crawler import BaseCrawler
 from crawlers.tiktok.web.endpoints import TikTokAPIEndpoints
-from crawlers.utils.utils import extract_valid_urls
-
-# TikTok加密参数生成器
-from crawlers.tiktok.web.utils import (
-    AwemeIdFetcher,
-    BogusManager,
-    SecUserIdFetcher,
-    TokenManager
-)
 
 # TikTok接口数据请求模型
 from crawlers.tiktok.web.models import (
-    UserProfile,
-    UserPost,
-    UserLike,
-    UserMix,
-    UserCollect,
-    PostDetail,
-    UserPlayList,
     PostComment,
     PostCommentReply,
+    PostDetail,
+    UserCollect,
     UserFans,
-    UserFollow
+    UserFollow,
+    UserLike,
+    UserMix,
+    UserPlayList,
+    UserPost,
+    UserProfile,
 )
 
+# TikTok加密参数生成器
+from crawlers.tiktok.web.utils import AwemeIdFetcher, BogusManager, SecUserIdFetcher, TokenManager
+from crawlers.utils.utils import extract_valid_urls
 
 # 配置文件路径
 path = os.path.abspath(os.path.dirname(__file__))
@@ -41,7 +36,6 @@ with open(f"{path}/config.yaml", "r", encoding="utf-8") as f:
 
 
 class TikTokWebCrawler:
-
     def __init__(self):
         self.proxy_pool = None
 
@@ -54,8 +48,7 @@ class TikTokWebCrawler:
                 "Referer": tiktok_config["headers"]["Referer"],
                 "Cookie": tiktok_config["headers"]["Cookie"],
             },
-            "proxies": {"http://": tiktok_config["proxies"]["http"],
-                        "https://": tiktok_config["proxies"]["https"]}
+            "proxies": {"http://": tiktok_config["proxies"]["http"], "https://": tiktok_config["proxies"]["https"]},
         }
         return kwargs
 
@@ -127,8 +120,9 @@ class TikTokWebCrawler:
         return response
 
     # 获取用户的收藏列表
-    async def fetch_user_collect(self, cookie: str, secUid: str, cursor: int = 0, count: int = 30,
-                                 coverFormat: int = 2):
+    async def fetch_user_collect(
+        self, cookie: str, secUid: str, cursor: int = 0, count: int = 30, coverFormat: int = 2
+    ):
         # 获取TikTok的实时Cookie
         kwargs = await self.get_tiktok_headers()
         kwargs["headers"]["Cookie"] = cookie
@@ -194,16 +188,18 @@ class TikTokWebCrawler:
         return response
 
     # 获取作品的评论回复列表
-    async def fetch_post_comment_reply(self, item_id: str, comment_id: str, cursor: int = 0, count: int = 20,
-                                       current_region: str = ""):
+    async def fetch_post_comment_reply(
+        self, item_id: str, comment_id: str, cursor: int = 0, count: int = 20, current_region: str = ""
+    ):
         # 获取TikTok的实时Cookie
         kwargs = await self.get_tiktok_headers()
         # 创建一个基础爬虫
         base_crawler = BaseCrawler(proxies=kwargs["proxies"], crawler_headers=kwargs["headers"])
         async with base_crawler as crawler:
             # 创建一个作品评论的BaseModel参数
-            params = PostCommentReply(item_id=item_id, comment_id=comment_id, cursor=cursor, count=count,
-                                      current_region=current_region)
+            params = PostCommentReply(
+                item_id=item_id, comment_id=comment_id, cursor=cursor, count=count, current_region=current_region
+            )
             # 生成一个作品评论的带有加密参数的Endpoint
             endpoint = BogusManager.model_2_endpoint(
                 TikTokAPIEndpoints.POST_COMMENT_REPLY, params.dict(), kwargs["headers"]["User-Agent"]
@@ -247,26 +243,18 @@ class TikTokWebCrawler:
 
     # 生成真实msToken
     async def fetch_real_msToken(self):
-        result = {
-            "msToken": TokenManager().gen_real_msToken()
-        }
+        result = {"msToken": TokenManager().gen_real_msToken()}
         return result
 
     # 生成ttwid
     async def gen_ttwid(self, cookie: str):
-        result = {
-            "ttwid": TokenManager().gen_ttwid(cookie)
-        }
+        result = {"ttwid": TokenManager().gen_ttwid(cookie)}
         return result
 
     # 生成xbogus
     async def gen_xbogus(self, url: str, user_agent: str):
         url = BogusManager.xb_str_2_endpoint(user_agent, url)
-        result = {
-            "url": url,
-            "x_bogus": url.split("&X-Bogus=")[1],
-            "user_agent": user_agent
-        }
+        result = {"url": url, "x_bogus": url.split("&X-Bogus=")[1], "user_agent": user_agent}
         return result
 
     # 提取单个用户id

@@ -1,15 +1,18 @@
 import asyncio  # 异步I/O
 import os  # 系统操作
 import time  # 时间操作
+
 import yaml  # 配置文件
 
 # 基础爬虫客户端和哔哩哔哩API端点
 from crawlers.base_crawler import BaseCrawler
 from crawlers.bilibili.web.endpoints import BilibiliAPIEndpoints
-# 哔哩哔哩工具类
-from crawlers.bilibili.web.utils import EndpointGenerator, bv2av, ResponseAnalyzer
+
 # 数据请求模型
-from crawlers.bilibili.web.models import UserPostVideos, UserProfile, ComPopular, UserDynamic, PlayUrl
+from crawlers.bilibili.web.models import ComPopular, PlayUrl, UserDynamic, UserPostVideos, UserProfile
+
+# 哔哩哔哩工具类
+from crawlers.bilibili.web.utils import EndpointGenerator, ResponseAnalyzer, bv2av
 
 # 配置文件路径
 path = os.path.abspath(os.path.dirname(__file__))
@@ -20,10 +23,9 @@ with open(f"{path}/config.yaml", "r", encoding="utf-8") as f:
 
 
 class BilibiliWebCrawler:
-
     # 从配置文件读取哔哩哔哩请求头
     async def get_bilibili_headers(self):
-        bili_config = config['TokenManager']['bilibili']
+        bili_config = config["TokenManager"]["bilibili"]
         kwargs = {
             "headers": {
                 "accept-language": bili_config["headers"]["accept-language"],
@@ -367,7 +369,7 @@ class BilibiliWebCrawler:
 
         # 获取指定分区正在直播的主播
         pn = 1
-        area_id = '9'
+        area_id = "9"
         result = await self.fetch_live_streamers(area_id=area_id, pn=pn)
         print(result)
 
@@ -387,7 +389,7 @@ class BilibiliWebCrawler:
         # print(result)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 初始化
     BilibiliWebCrawler = BilibiliWebCrawler()
 

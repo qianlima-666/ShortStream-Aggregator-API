@@ -3,15 +3,11 @@ class APIError(Exception):
 
     def __init__(self, status_code=None):
         self.status_code = status_code
-        print(
-            "程序出现异常，请检查错误信息。"
-        )
+        print("程序出现异常，请检查错误信息。")
 
     def display_error(self):
         """显示错误信息和状态码（如果有的话）"""
-        return f"Error: {self.args[0]}." + (
-            f" Status Code: {self.status_code}." if self.status_code else ""
-        )
+        return f"Error: {self.args[0]}." + (f" Status Code: {self.status_code}." if self.status_code else "")
 
 
 class APIConnectionError(APIError):

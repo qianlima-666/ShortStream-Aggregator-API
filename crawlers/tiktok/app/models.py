@@ -1,6 +1,3 @@
-import time
-from typing import List
-
 from pydantic import BaseModel
 
 
@@ -9,6 +6,7 @@ class BaseRequestModel(BaseModel):
     """
     Base Request Model for TikTok API
     """
+
     iid: int = 7318518857994389254
     device_id: int = 7318517321748022790
     channel: str = "googleplay"
@@ -24,4 +22,5 @@ class FeedVideoDetail(BaseRequestModel):
     """
     Feed Video Detail Request Model
     """
+
     aweme_id: str

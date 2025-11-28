@@ -1,5 +1,6 @@
 from typing import Any, List
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel
 
 from crawlers.douyin.web.utils import TokenManager, VerifyFpManager
 
@@ -291,6 +292,5 @@ class URL_List(BaseModel):
     urls: List[str] = [
         "https://test.example.com/xxxxx/",
         "https://test.example.com/yyyyy/",
-        "https://test.example.com/zzzzz/"
+        "https://test.example.com/zzzzz/",
     ]
-
