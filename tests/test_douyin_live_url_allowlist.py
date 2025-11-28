@@ -9,12 +9,16 @@ from crawlers.douyin.web.utils import is_allowed_douyin_live_url, WebCastIdFetch
 from crawlers.utils.api_exceptions import APINotFoundError
 
 
-def test_is_allowed_douyin_live_url_true_live_douyin_https():
+def test_is_allowed_douyin_live_url_true_live_douyin_https(monkeypatch):
+    import socket
+    monkeypatch.setattr(socket, "gethostbyname", lambda h: "1.2.3.4")
     url = "https://live.douyin.com/123456789"
     assert is_allowed_douyin_live_url(url) is True
 
 
-def test_is_allowed_douyin_live_url_true_webcast_amemv_https():
+def test_is_allowed_douyin_live_url_true_webcast_amemv_https(monkeypatch):
+    import socket
+    monkeypatch.setattr(socket, "gethostbyname", lambda h: "1.2.3.4")
     url = "https://webcast.amemv.com/douyin/webcast/reflow/7318296342189919011"
     assert is_allowed_douyin_live_url(url) is True
 
@@ -27,6 +31,20 @@ def test_is_allowed_douyin_live_url_false_http():
 def test_is_allowed_douyin_live_url_false_other_host():
     url = "https://example.com/path"
     assert is_allowed_douyin_live_url(url) is False
+
+
+def test_is_allowed_douyin_live_url_reject_private_resolution(monkeypatch):
+    import socket
+    monkeypatch.setattr(socket, "gethostbyname", lambda h: "10.1.2.3")
+    url = "https://live.douyin.com/123456789"
+    assert is_allowed_douyin_live_url(url) is False
+
+
+def test_is_allowed_douyin_live_url_allow_public_resolution(monkeypatch):
+    import socket
+    monkeypatch.setattr(socket, "gethostbyname", lambda h: "1.2.3.4")
+    url = "https://webcast.amemv.com/douyin/webcast/reflow/7318296342189919011"
+    assert is_allowed_douyin_live_url(url) is True
 
 
 def test_get_webcast_id_rejects_non_allowed_domain():

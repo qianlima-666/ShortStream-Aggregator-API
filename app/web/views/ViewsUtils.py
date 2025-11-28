@@ -19,5 +19,5 @@ class ViewsUtils:
     # 解析抖音分享口令中的链接并返回列表/Parse the link in the Douyin share command and return a list
     @staticmethod
     def find_url(string: str) -> list:
-        url = re.findall(r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+", string)
+        url = re.findall(r"https?://[-A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%]+", string)
         return url

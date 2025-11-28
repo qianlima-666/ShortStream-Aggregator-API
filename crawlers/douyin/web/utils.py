@@ -34,7 +34,7 @@ def is_allowed_douyin_live_url(url: str) -> bool:
     """
     检查输入 URL 是否属于允许的抖音直播域名，用于防止服务端请求伪造（SSRF）。
 
-    仅允许 `https` 且主机名为 `live.douyin.com` 或 `webcast.amemv.com` 的链接。
+    仅允许 `https` 且主机名为 `live.douyin.com` 或 `webcast.amemv.com` 的链接，并排除IP地址、私有/本地地址以防SSRF攻击。
 
     Args:
         url (str): 待校验的 URL
@@ -47,7 +47,28 @@ def is_allowed_douyin_live_url(url: str) -> bool:
         if parsed.scheme != "https":
             return False
         host = parsed.hostname
-        return host in {"live.douyin.com", "webcast.amemv.com"}
+        if not host:
+            return False
+        normalized_host = host.rstrip('.').lower()
+        allowed_hosts = {"live.douyin.com", "webcast.amemv.com"}
+        if normalized_host not in allowed_hosts:
+            return False
+        import socket
+        import ipaddress
+        try:
+            addr = socket.gethostbyname(normalized_host)
+            ip_obj = ipaddress.ip_address(addr)
+            if (
+                ip_obj.is_private
+                or ip_obj.is_loopback
+                or ip_obj.is_reserved
+                or ip_obj.is_link_local
+                or ip_obj.is_multicast
+            ):
+                return False
+        except Exception:
+            return False
+        return True
     except Exception:
         return False
 
