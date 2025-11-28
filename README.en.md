@@ -13,4 +13,4 @@
 
 ## 👻Introduction
 
-This project is based on[Yvil0stahl/dentaktkdonldb@42784ffssahahah16bfissah153adhaasasv16s](https://github.com/Evil0ctal/Douyin_TikTok_Download_API/tree/42784ffc83a72a516bfe952153ad7e2a3998d16c)It was developed and renamed to provide cross-platform short video parsing and distribution capabilities (Douyin/TikTok/Bilibili), and was optimized and expanded while maintaining the spirit of the original project.
+This project is based on[Evil0ctal/Douyin_TikTok_Download_API@42784ffc83a72a516bfe952153ad7e2a3998d16c](https://github.com/Evil0ctal/Douyin_TikTok_Download_API/tree/42784ffc83a72a516bfe952153ad7e2a3998d16c)It was developed and renamed to provide cross-platform short video parsing and distribution capabilities (Douyin/TikTok/Bilibili), and was optimized and expanded while maintaining the spirit of the original project.
