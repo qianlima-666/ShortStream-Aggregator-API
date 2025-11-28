@@ -83,13 +83,13 @@ API:
         - .bilibili.com
         - .bilivideo.com
         - .hdslb.com
-    bytedance_api:
-      - mssdk.bytedance.com
-      - ttwid.bytedance.com
-    tiktok_api:
-      - mssdk.tiktokw.us
-      - mssdk.bytedance.com
-      - www.tiktok.com
+      bytedance_api:
+        - mssdk.bytedance.com
+        - ttwid.bytedance.com
+      tiktok_api:
+        - mssdk.tiktokw.us
+        - mssdk.bytedance.com
+        - www.tiktok.com
 
   # Auth Configuration | 认证配置
   Auth:

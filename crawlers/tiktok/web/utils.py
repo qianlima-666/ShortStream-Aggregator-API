@@ -32,6 +32,12 @@ _root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."
 _cfg = os.path.join(_root, "config", "tiktok_web.yaml")
 with open(_cfg, "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
+_gcfg = os.path.join(_root, "config", "config.yaml")
+try:
+    with open(_gcfg, "r", encoding="utf-8") as gf:
+        global_config = yaml.safe_load(gf)
+except Exception:
+    global_config = {}
 
 
 class TokenManager:
@@ -51,7 +57,12 @@ class TokenManager:
         生成真实的msToken,当出现错误时返回虚假的值
         (Generate a real msToken and return a false value when an error occurs)
         """
-
+        try:
+            sec = bool(global_config.get("API", {}).get("Security", {}).get("StrictValidation", True))
+        except Exception:
+            sec = True
+        if not sec:
+            return cls.gen_false_msToken()
         payload = json.dumps(
             {
                 "magic": cls.token_conf["magic"],
@@ -72,12 +83,12 @@ class TokenManager:
             try:
                 api_url = cls.token_conf["url"]
                 allowed_list = (
-                    config.get("API", {})
+                    global_config.get("API", {})
                     .get("AllowedDomains", {})
                     .get("tiktok_api", ["mssdk.tiktokw.us", "mssdk.bytedance.com"])
                 )
                 if not _is_allowed_tiktok_api_url(api_url, set(allowed_list)):
-                    logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）")
+                    logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）api_url:{};allowed_list:{}".format(api_url, allowed_list))
                 from urllib.parse import urlparse
                 p = urlparse(api_url)
                 safe_url = f"https://{(p.hostname or '').lower().rstrip('.')}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
@@ -132,12 +143,12 @@ class TokenManager:
             try:
                 api_url = cls.ttwid_conf["url"]
                 allowed_list = (
-                    config.get("API", {})
+                    global_config.get("API", {})
                     .get("AllowedDomains", {})
                     .get("tiktok_api", ["www.tiktok.com"])
                 )
                 if not _is_allowed_tiktok_api_url(api_url, set(allowed_list)):
-                    logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）")
+                    logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）api_url:{};allowed_list:{}".format(api_url, allowed_list))
                 from urllib.parse import urlparse
                 p = urlparse(api_url)
                 safe_url = f"https://{(p.hostname or '').lower().rstrip('.')}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
@@ -198,7 +209,7 @@ class TokenManager:
                     .get("tiktok_api", ["www.tiktok.com"])
                 )
                 if not _is_allowed_tiktok_api_url(api_url, set(allowed_list)):
-                    logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）")
+                    logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）api_url:{};allowed_list:{}".format(api_url, allowed_list))
                 from urllib.parse import urlparse
                 p = urlparse(api_url)
                 safe_url = f"https://{(p.hostname or '').lower().rstrip('.')}{p.path or '/'}" + (f"?{p.query}" if p.query else "")
@@ -755,9 +766,11 @@ def _is_allowed_tiktok_api_url(url: str, hosts: set[str]) -> bool:
         import ipaddress
         sec = True
         try:
-            sec = bool(config.get("API", {}).get("Security", {}).get("StrictValidation", True))
+            sec = bool(global_config.get("API", {}).get("Security", {}).get("StrictValidation", True))
         except Exception:
             sec = True
+        if not sec:
+            return True
         p = urlparse(url)
         if p.scheme != "https":
             return False
@@ -769,19 +782,27 @@ def _is_allowed_tiktok_api_url(url: str, hosts: set[str]) -> bool:
         try:
             infos = socket.getaddrinfo(host, None)
             addrs = {i[4][0] for i in infos if i and i[4]}
+            has_public = False
             for addr in addrs:
-                ip_obj = ipaddress.ip_address(addr)
-                if (
-                    ip_obj.is_private
-                    or ip_obj.is_loopback
-                    or ip_obj.is_reserved
-                    or ip_obj.is_link_local
-                    or ip_obj.is_multicast
-                ):
-                    if not sec:
-                        return True
-                    return False
-            return True
+                try:
+                    ip_obj = ipaddress.ip_address(addr)
+                    if (
+                        ip_obj.is_private
+                        or ip_obj.is_loopback
+                        or ip_obj.is_reserved
+                        or ip_obj.is_link_local
+                        or ip_obj.is_multicast
+                    ):
+                        continue
+                    else:
+                        has_public = True
+                except Exception:
+                    continue
+            if has_public:
+                return True
+            if not sec:
+                return True
+            return False
         except Exception:
             # 在开发/离线环境可能无法解析DNS；只要域名在白名单内则允许
             return True
