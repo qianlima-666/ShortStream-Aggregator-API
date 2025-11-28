@@ -258,6 +258,14 @@ async def fetch_data_stream(url: str, platform: str, request: Request, headers: 
             file_path = _norm_path(file_path)
             if not _is_under_any(file_path, allowed_roots):
                 return False
+            import os as _os
+            full = _norm_path(file_path)
+            bases = [
+                _norm_path(root_path),
+                _norm_path(temp_root),
+            ]
+            if not any(_os.path.commonpath([full, b]) == b and full != b for b in bases):
+                return False
             async with aiofiles.open(file_path, "wb") as out_file:
                 try:
                     async for chunk in response.aiter_bytes(chunk_size=65536):
@@ -437,6 +445,11 @@ async def download_file_hybrid(
         download_path = _norm_path(os.path.join(root_path, download_subdir))
         if not _is_under(root_path, download_path):
             raise HTTPException(status_code=400, detail="Invalid download path")
+        base = _norm_path(root_path)
+        full = _norm_path(download_path)
+        import os as _os
+        if _os.path.commonpath([full, base]) != base or full == base:
+            raise HTTPException(status_code=400, detail="Invalid download path")
 
         # 确保目录存在/Ensure the directory exists
         os.makedirs(download_path, exist_ok=True)
@@ -455,8 +468,10 @@ async def download_file_hybrid(
             if not _is_under(root_path, file_path) or file_path == root_path:
                 raise HTTPException(status_code=400, detail="Invalid file path")
 
-            # 判断文件是否存在，存在就直接返回
-            if _is_under(root_path, file_path) and os.path.exists(file_path):
+            base = _norm_path(root_path)
+            full = _norm_path(file_path)
+            import os as _os
+            if _os.path.commonpath([full, base]) == base and full != base and os.path.exists(file_path):
                 return FileResponse(path=file_path, media_type="video/mp4", filename=file_name)
 
             # 获取对应平台的headers
@@ -537,12 +552,16 @@ async def download_file_hybrid(
             zip_file_name = secure_filename(raw_zip)
             if not _valid_filename(zip_file_name):
                 raise HTTPException(status_code=400, detail="Invalid filename")
+            if not zip_file_name.lower().endswith(".zip"):
+                raise HTTPException(status_code=400, detail="Invalid filename extension")
             zip_file_path = _norm_path(os.path.join(download_path, zip_file_name))
             if not _is_under(root_path, zip_file_path) or zip_file_path == root_path:
                 raise HTTPException(status_code=400, detail="Invalid file path")
 
             # 判断文件是否存在，存在就直接返回、
-            if _is_under(root_path, zip_file_path) and os.path.exists(zip_file_path):
+            base = _norm_path(root_path)
+            full = _norm_path(zip_file_path)
+            if os.path.commonpath([full, base]) == base and full != base and os.path.exists(zip_file_path):
                 return FileResponse(path=zip_file_path, filename=zip_file_name, media_type="application/zip")
 
             # 获取图片文件/Get image file
@@ -556,8 +575,15 @@ async def download_file_hybrid(
                 # 请求图片文件/Request image file
                 response = await fetch_data(url, platform)
                 index = int(urls.index(url))
-                content_type = response.headers.get("content-type")
-                file_format = content_type.split("/")[1]
+                content_type = (response.headers.get("content-type") or "").lower()
+                subtype = ""
+                if "/" in content_type:
+                    _, subtype = content_type.split("/", 1)
+                subtype = subtype.split(";")[0].strip()
+                allowed_ext = {"jpg", "jpeg", "png", "gif", "webp", "bmp"}
+                if subtype not in allowed_ext:
+                    raise HTTPException(status_code=400, detail="Unsupported content type for image download")
+                file_format = subtype
                 raw_img = (
                     f"{file_prefix}{platform}_{safe_id}_{index + 1}.{file_format}"
                     if not with_watermark
@@ -567,6 +593,12 @@ async def download_file_hybrid(
                 if not _valid_filename(file_name):
                     raise HTTPException(status_code=400, detail="Invalid filename")
                 file_path = _norm_path(os.path.join(download_path, file_name))
+                # 额外的标准化路径前缀校验以满足静态扫描
+                base = _norm_path(root_path)
+                full = _norm_path(file_path)
+                import os as _os
+                if _os.path.commonpath([full, base]) != base or full == base:
+                    raise HTTPException(status_code=400, detail="Invalid file path")
                 if not _is_under(root_path, file_path):
                     raise HTTPException(status_code=400, detail="Invalid file path")
                 image_file_list.append(file_path)
