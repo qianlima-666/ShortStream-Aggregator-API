@@ -80,7 +80,24 @@ def _valid_filename(name: str) -> bool:
     return True
 
 
-async def fetch_data(url: str, headers: dict = None):
+def _is_allowed_download_url(platform: str, url: str) -> bool:
+    try:
+        from urllib.parse import urlparse
+        p = urlparse(url)
+        if p.scheme != "https":
+            return False
+        host = (p.hostname or "").lower().rstrip('.')
+        allow = {
+            "douyin": [".douyin.com", ".amemv.com", ".snssdk.com"],
+            "tiktok": [".tiktok.com"],
+            "bilibili": [".bilibili.com", ".bilivideo.com", ".hdslb.com"],
+        }.get(platform, [])
+        return any(host == a.lstrip('.') or host.endswith(a) for a in allow)
+    except Exception:
+        return False
+
+
+async def fetch_data(url: str, platform: str, headers: dict = None):
     headers = (
         {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -88,6 +105,8 @@ async def fetch_data(url: str, headers: dict = None):
         if headers is None
         else headers.get("headers")
     )
+    if not _is_allowed_download_url(platform, url):
+        raise HTTPException(status_code=400, detail="Invalid upstream URL for platform")
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
         response.raise_for_status()  # 确保响应是成功的
@@ -95,7 +114,7 @@ async def fetch_data(url: str, headers: dict = None):
 
 
 # 下载视频专用
-async def fetch_data_stream(url: str, request: Request, headers: dict = None, file_path: str = None):
+async def fetch_data_stream(url: str, platform: str, request: Request, headers: dict = None, file_path: str = None):
     headers = (
         {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -103,6 +122,8 @@ async def fetch_data_stream(url: str, request: Request, headers: dict = None, fi
         if headers is None
         else headers.get("headers")
     )
+    if not _is_allowed_download_url(platform, url):
+        return False
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(60), limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
     ) as client:
@@ -362,7 +383,7 @@ async def download_file_hybrid(
                     else data.get("video_data").get("wm_video_url_HQ")
                 )
                 start = time.perf_counter()
-                success = await fetch_data_stream(url, request, headers=__headers, file_path=file_path)
+                success = await fetch_data_stream(url, platform, request, headers=__headers, file_path=file_path)
                 if not success:
                     raise HTTPException(status_code=500, detail="An error occurred while fetching data")
                 try:
@@ -413,7 +434,7 @@ async def download_file_hybrid(
             image_file_list = []
             for url in urls:
                 # 请求图片文件/Request image file
-                response = await fetch_data(url)
+                response = await fetch_data(url, platform)
                 index = int(urls.index(url))
                 content_type = response.headers.get("content-type")
                 file_format = content_type.split("/")[1]

@@ -333,6 +333,9 @@ class SecUserIdFetcher:
 
         if url is None:
             raise (APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__)))
+        parsed_url = urlparse(url)
+        if parsed_url.scheme != "https" or parsed_url.hostname not in {"v.douyin.com", "www.douyin.com"}:
+            raise APINotFoundError("输入的URL不合法（不是 Douyin 网页域名）。类名：{0}".format(cls.__name__))
 
         parsed_url = urlparse(url)
         pattern = cls._REDIRECT_URL_PATTERN if parsed_url.hostname == "v.douyin.com" else cls._DOUYIN_URL_PATTERN
@@ -420,6 +423,9 @@ class AwemeIdFetcher:
         transport = httpx.AsyncHTTPTransport(retries=5)
         async with httpx.AsyncClient(transport=transport, proxy=None, timeout=10) as client:
             try:
+                parsed = urlparse(url)
+                if parsed.scheme != "https" or (parsed.hostname or "").lower() not in {"v.douyin.com", "www.douyin.com"}:
+                    raise APINotFoundError("输入的URL不合法（不是 Douyin 网页域名）。类名：{0}".format(cls.__name__))
                 response = await client.get(url, follow_redirects=True)
                 response.raise_for_status()
 

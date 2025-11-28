@@ -268,6 +268,10 @@ class SecUserIdFetcher:
 
         if url is None:
             raise (APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__)))
+        from urllib.parse import urlparse
+        pu = urlparse(url)
+        if pu.scheme != "https" or (pu.hostname or "").lower() not in {"www.tiktok.com", "m.tiktok.com"}:
+            raise APINotFoundError("输入的URL不合法（不是 TikTok 网页域名）。类名：{0}".format(cls.__name__))
 
         transport = httpx.AsyncHTTPTransport(retries=5)
         async with httpx.AsyncClient(transport=transport, proxies=TokenManager.proxies, timeout=10) as client:
@@ -351,6 +355,10 @@ class SecUserIdFetcher:
 
         if url is None:
             raise (APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__)))
+        from urllib.parse import urlparse
+        pu = urlparse(url)
+        if pu.scheme != "https" or (pu.hostname or "").lower() not in {"www.tiktok.com", "m.tiktok.com"}:
+            raise APINotFoundError("输入的URL不合法（不是 TikTok 网页域名）。类名：{0}".format(cls.__name__))
 
         transport = httpx.AsyncHTTPTransport(retries=5)
         async with httpx.AsyncClient(transport=transport, proxies=TokenManager.proxies, timeout=10) as client:
@@ -459,6 +467,10 @@ class AwemeIdFetcher:
         transport = httpx.AsyncHTTPTransport(retries=10)
         async with httpx.AsyncClient(transport=transport, proxies=TokenManager.proxies, timeout=10) as client:
             try:
+                from urllib.parse import urlparse
+                pu = urlparse(url)
+                if pu.scheme != "https" or (pu.hostname or "").lower() not in {"vt.tiktok.com", "www.tiktok.com", "m.tiktok.com"}:
+                    raise APINotFoundError("输入的URL不合法（不是 TikTok 网页/短链域名）。类名：{0}".format(cls.__name__))
                 response = await client.get(url, follow_redirects=True)
 
                 if response.status_code in {200, 444}:

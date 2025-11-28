@@ -22,6 +22,10 @@ class HybridCrawler:
         """
         # 如果是 b23.tv 短链，需要重定向获取真实URL
         if "b23.tv" in url:
+            from urllib.parse import urlparse
+            p = urlparse(url)
+            if p.scheme != "https" or (p.hostname or "").lower() != "b23.tv":
+                raise ValueError("Invalid b23.tv short link")
             async with httpx.AsyncClient() as client:
                 response = await client.head(url, follow_redirects=True)
                 url = str(response.url)
