@@ -11,6 +11,7 @@ import httpx
 import yaml
 from fastapi import APIRouter, HTTPException, Query, Request  # 导入FastAPI组件
 from starlette.responses import FileResponse
+from werkzeug.utils import secure_filename
 
 from app.api.models.APIResponseModel import ErrorResponseModel  # 导入响应模型
 from crawlers.hybrid.hybrid_crawler import HybridCrawler  # 导入混合数据爬虫
@@ -34,27 +35,22 @@ def _norm_path(p: str) -> str:
 
 def _is_under(root: str, p: str) -> bool:
     try:
-        root_n = Path(_norm_path(root)).resolve(strict=False)
-        p_n = Path(_norm_path(p)).resolve(strict=False)
-        try:
-            p_n.relative_to(root_n)
-            return True
-        except Exception:
-            return False
+        root_n = _norm_path(root)
+        p_n = _norm_path(p)
+        common = os.path.commonpath([p_n, root_n])
+        return common == root_n and p_n != root_n
     except Exception:
         return False
 
 
 def _is_under_any(p: str, roots: list[str]) -> bool:
     try:
-        rp = Path(_norm_path(p)).resolve(strict=False)
-        for r in list(roots):
-            rr = Path(_norm_path(r)).resolve(strict=False)
-            try:
-                rp.relative_to(rr)
+        p_n = _norm_path(p)
+        for r in roots:
+            r_n = _norm_path(r)
+            common = os.path.commonpath([p_n, r_n])
+            if common == r_n and p_n != r_n:
                 return True
-            except Exception:
-                continue
         return False
     except Exception:
         return False
@@ -311,7 +307,7 @@ async def download_file_hybrid(
                 if not with_watermark
                 else f"{file_prefix}{platform}_{safe_id}_watermark.mp4"
             )
-            file_name = re.sub(r"[^A-Za-z0-9_\-\.]", "_", raw_name)
+            file_name = secure_filename(raw_name)
             if not _valid_filename(file_name):
                 raise HTTPException(status_code=400, detail="Invalid filename")
             file_path = _norm_path(os.path.join(download_path, file_name))
@@ -397,7 +393,7 @@ async def download_file_hybrid(
                 if not with_watermark
                 else f"{file_prefix}{platform}_{safe_id}_images_watermark.zip"
             )
-            zip_file_name = re.sub(r"[^A-Za-z0-9_\-\.]", "_", raw_zip)
+            zip_file_name = secure_filename(raw_zip)
             if not _valid_filename(zip_file_name):
                 raise HTTPException(status_code=400, detail="Invalid filename")
             zip_file_path = _norm_path(os.path.join(download_path, zip_file_name))
@@ -426,7 +422,7 @@ async def download_file_hybrid(
                     if not with_watermark
                     else f"{file_prefix}{platform}_{safe_id}_{index + 1}_watermark.{file_format}"
                 )
-                file_name = re.sub(r"[^A-Za-z0-9_\-\.]", "_", raw_img)
+                file_name = secure_filename(raw_img)
                 if not _valid_filename(file_name):
                     raise HTTPException(status_code=400, detail="Invalid filename")
                 file_path = _norm_path(os.path.join(download_path, file_name))

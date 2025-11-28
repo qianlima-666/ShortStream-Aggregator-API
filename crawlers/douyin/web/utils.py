@@ -6,7 +6,7 @@ import re
 import time
 from pathlib import Path
 from typing import Union
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 # import execjs
 import httpx
@@ -29,6 +29,27 @@ from crawlers.utils.utils import (
     get_timestamp,
     split_filename,
 )
+
+def is_allowed_douyin_live_url(url: str) -> bool:
+    """
+    检查输入 URL 是否属于允许的抖音直播域名，用于防止服务端请求伪造（SSRF）。
+
+    仅允许 `https` 且主机名为 `live.douyin.com` 或 `webcast.amemv.com` 的链接。
+
+    Args:
+        url (str): 待校验的 URL
+
+    Returns:
+        bool: 当且仅当 URL 满足安全白名单策略时返回 True
+    """
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            return False
+        host = parsed.hostname
+        return host in {"live.douyin.com", "webcast.amemv.com"}
+    except Exception:
+        return False
 
 # 配置文件路径
 # Read the configuration file
@@ -292,7 +313,8 @@ class SecUserIdFetcher:
         if url is None:
             raise (APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__)))
 
-        pattern = cls._REDIRECT_URL_PATTERN if "v.douyin.com" in url else cls._DOUYIN_URL_PATTERN
+        parsed_url = urlparse(url)
+        pattern = cls._REDIRECT_URL_PATTERN if parsed_url.hostname == "v.douyin.com" else cls._DOUYIN_URL_PATTERN
 
         try:
             transport = httpx.AsyncHTTPTransport(retries=5)
@@ -462,8 +484,8 @@ class WebCastIdFetcher:
         # 提取有效URL
         url = extract_valid_urls(url)
 
-        if url is None:
-            raise (APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__)))
+        if url is None or not is_allowed_douyin_live_url(url):
+            raise (APINotFoundError("输入的URL不合法（不是 Douyin 直播域名）。类名：{0}".format(cls.__name__)))
         try:
             # 重定向到完整链接
             transport = httpx.AsyncHTTPTransport(retries=5)
