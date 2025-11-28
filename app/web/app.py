@@ -9,6 +9,9 @@ import hashlib
 import time
 from pywebio.pin import put_input, pin
 import json
+import binascii
+import hmac
+import base64
 
 from app.web.views.About import about_pop_window
 from app.web.views.Document import api_document_pop_window
@@ -70,7 +73,7 @@ class MainView:
             stored_plain = auth.get('Password')
             ok_pwd = False
             if stored_hash:
-                ok_pwd = hashlib.sha256(pw.encode('utf-8')).hexdigest() == stored_hash
+                ok_pwd = password_verify(pw, stored_hash)
             else:
                 ok_pwd = stored_plain is not None and pw == stored_plain
             if ok_user and ok_pwd:
@@ -148,3 +151,31 @@ class MainView:
 
     def logout(self):
         session.run_js("localStorage.removeItem('ssa_auth'); location.reload();")
+
+
+def _decode_salt(s: str) -> bytes:
+    try:
+        return binascii.unhexlify(s)
+    except (binascii.Error, ValueError):
+        return base64.b64decode(s)
+
+
+def password_verify(password: str, stored: str) -> bool:
+    parts = stored.split('$')
+    algo = 'pbkdf2_sha256'
+    if len(parts) == 4:
+        algo, iter_str, salt_str, hash_str = parts
+    elif len(parts) == 3:
+        iter_str, salt_str, hash_str = parts
+    else:
+        return False
+    if 'pbkdf2' not in algo:
+        return False
+    try:
+        iters = int(iter_str)
+    except ValueError:
+        return False
+    salt = _decode_salt(salt_str)
+    dk = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iters)
+    dk_hex = binascii.hexlify(dk).decode()
+    return hmac.compare_digest(dk_hex.lower(), hash_str.lower())
