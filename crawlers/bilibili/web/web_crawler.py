@@ -14,11 +14,12 @@ from crawlers.bilibili.web.models import ComPopular, PlayUrl, UserDynamic, UserP
 # 哔哩哔哩工具类
 from crawlers.bilibili.web.utils import EndpointGenerator, ResponseAnalyzer, bv2av
 
-# 配置文件路径
-path = os.path.abspath(os.path.dirname(__file__))
+# 配置文件路径（统一从项目根的 config 目录读取）
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+_cfg = os.path.join(_root, "config", "bilibili_web.yaml")
 
 # 读取配置文件
-with open(f"{path}/config.yaml", "r", encoding="utf-8") as f:
+with open(_cfg, "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
 

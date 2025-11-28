@@ -25,7 +25,11 @@ HybridCrawler = HybridCrawler()
 _ffmpeg_sem = asyncio.Semaphore(1)
 
 # 读取上级再上级目录的配置文件
-config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "config.yaml")
+config_path = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+    "config",
+    "config.yaml",
+)
 with open(config_path, "r", encoding="utf-8") as file:
     config = yaml.safe_load(file)
 
@@ -651,7 +655,7 @@ def _strict_msg(platform: str, issue: str, host: str = "", ips: list[str] | None
     extra = f" 域名：{host}" if host else ""
     ipinfo = f" 解析到IP：{ips}" if ips else ""
     logger.warning(
-        "严格校验拒绝: %s.%s%s. 建议在 config.yaml → API.AllowedDomains.download.%s 添加需要的域后缀或确保公网解析。当前白名单: %s",
+        "严格校验拒绝: %s.%s%s. 建议在 config/config.yaml → API.AllowedDomains.download.%s 添加需要的域后缀或确保公网解析。当前白名单: %s",
         issue,
         extra,
         ipinfo,

@@ -30,7 +30,11 @@ from crawlers.hybrid.hybrid_crawler import HybridCrawler
 HybridCrawler = HybridCrawler()
 
 # 读取上级再上级目录的配置文件
-config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "config.yaml")
+config_path = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+    "config",
+    "config.yaml",
+)
 with open(config_path, "r", encoding="utf-8") as file:
     config = yaml.safe_load(file)
 
@@ -84,8 +88,8 @@ def error_do(reason: str, value: str) -> None:
     put_markdown(ViewsUtils.t("> 寻求帮助:", "> Seek help:"))
     put_markdown(
         ViewsUtils.t(
-            "- 你可以尝试再次解析，或者尝试自行部署项目，然后替换`./app/crawlers/平台文件夹/config.yaml`中的`cookie`值。",
-            "- You can try to parse again, or try to deploy the project by yourself, and then replace the `cookie` value in `./app/crawlers/platform folder/config.yaml`.",
+            "- 你可以尝试再次解析，或者尝试自行部署项目，然后替换`./config/{platform}_web.yaml`中的`cookie`值。",
+            "- You can try to parse again, or try to deploy the project by yourself, and then replace the `cookie` value in `./config/{platform}_web.yaml`.",
         )
     )
 

@@ -76,8 +76,10 @@ def is_allowed_douyin_live_url(url: str) -> bool:
 # Read the configuration file
 path = os.path.abspath(os.path.dirname(__file__))
 
-# 读取配置文件
-with open(f"{path}/config.yaml", "r", encoding="utf-8") as f:
+# 读取配置文件（统一从项目根的 config 目录读取）
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+_cfg = os.path.join(_root, "config", "douyin_web.yaml")
+with open(_cfg, "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
 
