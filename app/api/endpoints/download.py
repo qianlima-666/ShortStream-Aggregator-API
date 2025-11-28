@@ -44,9 +44,9 @@ def _is_under(root: str, p: str) -> bool:
 
 def _is_under_any(p: str, roots: list[str]) -> bool:
     try:
-        rp = Path(_norm_path(p)).resolve()
-        for r in roots:
-            rr = Path(_norm_path(r)).resolve()
+        rp = Path(_norm_path(p)).resolve(strict=False)
+        for r in list(roots):
+            rr = Path(_norm_path(r)).resolve(strict=False)
             try:
                 rp.relative_to(rr)
                 return True
