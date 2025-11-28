@@ -27,8 +27,10 @@ from crawlers.utils.utils import (
 # Read the configuration file
 path = os.path.abspath(os.path.dirname(__file__))
 
-# 读取配置文件
-with open(f"{path}/config.yaml", "r", encoding="utf-8") as f:
+# 读取配置文件（统一从项目根的 config 目录读取）
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+_cfg = os.path.join(_root, "config", "tiktok_web.yaml")
+with open(_cfg, "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
 
@@ -111,7 +113,7 @@ class TokenManager:
                 # 返回虚假的msToken (Return a fake msToken)
                 logger.error("生成TikTok msToken API错误：{0}".format(e))
                 logger.info("当前网络无法正常访问TikTok服务器，已经使用虚假msToken以继续运行。")
-                logger.info("并且TikTok相关API大概率无法正常使用，请在(/tiktok/web/config.yaml)中更新代理。")
+                logger.info("并且TikTok相关API大概率无法正常使用，请在(/config/tiktok_web.yaml)中更新代理。")
                 logger.info("如果你不需要使用TikTok相关API，请忽略此消息。")
                 return cls.gen_false_msToken()
 

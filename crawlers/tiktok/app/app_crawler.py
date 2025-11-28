@@ -17,11 +17,12 @@ from crawlers.tiktok.app.models import FeedVideoDetail
 # 标记已废弃的方法
 from crawlers.utils.utils import model_to_query_string
 
-# 配置文件路径
-path = os.path.abspath(os.path.dirname(__file__))
+# 配置文件路径（统一从项目根的 config 目录读取）
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+_cfg = os.path.join(_root, "config", "tiktok_app.yaml")
 
 # 读取配置文件
-with open(f"{path}/config.yaml", "r", encoding="utf-8") as f:
+with open(_cfg, "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
 

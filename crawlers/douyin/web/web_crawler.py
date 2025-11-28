@@ -36,11 +36,12 @@ from crawlers.douyin.web.utils import (  # Aweme ID获取
     extract_valid_urls,  # URL提取
 )
 
-# 配置文件路径
-path = os.path.abspath(os.path.dirname(__file__))
+# 配置文件路径（统一从项目根的 config 目录读取）
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+_cfg = os.path.join(_root, "config", "douyin_web.yaml")
 
 # 读取配置文件
-with open(f"{path}/config.yaml", "r", encoding="utf-8") as f:
+with open(_cfg, "r", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
 
@@ -336,8 +337,7 @@ class DouyinWebCrawler:
         config["TokenManager"][service]["headers"]["Cookie"] = cookie
         print("DouyinWebCrawler cookie updated", config["TokenManager"][service]["headers"]["Cookie"])
         # 2. 写入配置文件（持久化）
-        config_path = f"{path}/config.yaml"
-        with open(config_path, "w", encoding="utf-8") as file:
+        with open(_cfg, "w", encoding="utf-8") as file:
             yaml.dump(config, file, default_flow_style=False, allow_unicode=True, indent=2)
 
     async def main(self):
