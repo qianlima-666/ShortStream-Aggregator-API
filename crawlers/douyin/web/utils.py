@@ -359,7 +359,8 @@ class SecUserIdFetcher:
         if url is None:
             raise (APINotFoundError("输入的URL不合法。类名：{0}".format(cls.__name__)))
         if not is_allowed_douyin_web_url(url):
-            raise APINotFoundError("输入的URL不合法（不是 Douyin 网页域名）。类名：{0}".format(cls.__name__))
+            if "douyin.com" not in url.lower():
+                raise APINotFoundError("输入的URL不合法（不是 Douyin 网页域名）。类名：{0}".format(cls.__name__))
 
         parsed_url = urlparse(url)
         pattern = cls._REDIRECT_URL_PATTERN if parsed_url.hostname == "v.douyin.com" else cls._DOUYIN_URL_PATTERN
@@ -886,7 +887,7 @@ def is_allowed_bytedance_api_url(url: str) -> bool:
         allowed_list = (
             global_config.get("API", {})
             .get("AllowedDomains", {})
-            .get("bytedance_api", ["mssdk.bytedance.com", "ttwid.bytedance.com"])
+            .get("bytedance_api", [])
         )
         allowed = set(allowed_list)
         if host not in allowed:

@@ -4,6 +4,7 @@ import time  # 时间操作
 from urllib.parse import urlencode  # URL编码
 
 import yaml  # 配置文件
+from ruamel.yaml import YAML
 
 # 基础爬虫客户端和抖音API端点
 from crawlers.base_crawler import BaseCrawler
@@ -321,25 +322,37 @@ class DouyinWebCrawler:
         # 对于URL列表
         return await WebCastIdFetcher.get_all_webcast_id(urls)
 
-    async def update_cookie(self, cookie: str):
+    async def update_cookie(self, cookie: str, service: str = "douyin"):
         """
-        更新指定服务的Cookie
-
-        Args:
-            service: 服务名称 (如: douyin_web)
-            cookie: 新的Cookie值
+        更新指定服务的 Cookie（不会丢失注释）
         """
+        yaml = YAML()
+        yaml.preserve_quotes = True  # 保留引号
+        yaml.indent(mapping=2, sequence=2, offset=2)
         global config
-        service = "douyin"
-        print("DouyinWebCrawler before update", config["TokenManager"][service]["headers"]["Cookie"])
-        print("DouyinWebCrawler to update", cookie)
-        # 1. 更新内存中的配置（立即生效）
-        config["TokenManager"][service]["headers"]["Cookie"] = cookie
-        print("DouyinWebCrawler cookie updated", config["TokenManager"][service]["headers"]["Cookie"])
-        # 2. 写入配置文件（持久化）
-        with open(_cfg, "w", encoding="utf-8") as file:
-            yaml.dump(config, file, default_flow_style=False, allow_unicode=True, indent=2)
 
+        # --- 1. 使用 ruamel.yaml 重新读取文件（带注释） ---
+        with open(_cfg, "r", encoding="utf-8") as f:
+            config = yaml.load(f)
+
+        # --- 2. 确保 key 存在 ---
+        tm = config.setdefault("TokenManager", {})
+        srv = tm.setdefault(service, {})
+        headers = srv.setdefault("headers", {})
+
+        # 日志
+        print(f"[{service}] Cookie before:", headers.get("Cookie"))
+        print(f"[{service}] Cookie update:", cookie)
+
+        # --- 3. 更新 Cookie ---
+        headers["Cookie"] = cookie
+
+        # --- 4. 使用 ruamel.yaml 写回（注释 100% 不丢） ---
+        with open(_cfg, "w", encoding="utf-8") as f:
+            yaml.dump(config, f)
+
+        print(f"[{service}] Cookie updated:", headers["Cookie"])
+    
     async def main(self):
         """-------------------------------------------------------handler接口列表-------------------------------------------------------"""
 

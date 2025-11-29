@@ -110,7 +110,7 @@ def _is_allowed_download_url(platform: str, url: str) -> bool:
             .get("AllowedDomains", {})
             .get("download", {})
             .get(platform, [])
-        ).get(platform, [])
+        )
         if not any(host_ascii == a.lstrip('.') or host_ascii.endswith(a) for a in allow):
             return False
         # 解析DNS并拒绝私网/本地/保留等地址
@@ -162,7 +162,7 @@ async def _safe_get(url: str, platform: str, headers: dict | None = None) -> htt
         .get("AllowedDomains", {})
         .get("download", {})
         .get(platform, [])
-    ).get(platform, [])
+    )
     if not any(host_ascii == a.lstrip('.') or host_ascii.endswith(a) for a in allow):
         raise HTTPException(status_code=400, detail=_strict_msg(platform, "域名不在白名单", host))
     try:
@@ -241,7 +241,7 @@ async def fetch_data_stream(url: str, platform: str, request: Request, headers: 
             .get("AllowedDomains", {})
             .get("download", {})
             .get(platform, [])
-        ).get(platform, [])
+        )
         if sec and not any(host_ascii == a.lstrip('.') or host_ascii.endswith(a) for a in allow):
             raise HTTPException(status_code=400, detail=_strict_msg(platform, "域名不在白名单", host_ascii))
         try:

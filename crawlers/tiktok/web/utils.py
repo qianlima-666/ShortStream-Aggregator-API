@@ -85,7 +85,7 @@ class TokenManager:
                 allowed_list = (
                     global_config.get("API", {})
                     .get("AllowedDomains", {})
-                    .get("tiktok_api", ["mssdk.tiktokw.us", "mssdk.bytedance.com"])
+                    .get("tiktok_api", [])
                 )
                 if not _is_allowed_tiktok_api_url(api_url, set(allowed_list)):
                     logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）api_url:{};allowed_list:{}".format(api_url, allowed_list))
@@ -145,7 +145,7 @@ class TokenManager:
                 allowed_list = (
                     global_config.get("API", {})
                     .get("AllowedDomains", {})
-                    .get("tiktok_api", ["www.tiktok.com"])
+                    .get("tiktok_api", [])
                 )
                 if not _is_allowed_tiktok_api_url(api_url, set(allowed_list)):
                     logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）api_url:{};allowed_list:{}".format(api_url, allowed_list))
@@ -206,7 +206,7 @@ class TokenManager:
                 allowed_list = (
                     config.get("API", {})
                     .get("AllowedDomains", {})
-                    .get("tiktok_api", ["www.tiktok.com"])
+                    .get("tiktok_api", [])
                 )
                 if not _is_allowed_tiktok_api_url(api_url, set(allowed_list)):
                     logger.warning("API URL 不在允许集合，继续请求（开发/离线环境容错）api_url:{};allowed_list:{}".format(api_url, allowed_list))
